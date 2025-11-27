@@ -276,15 +276,15 @@ router.delete('/blog/:id', requirePermission(PERMISSIONS.BLOG_DELETE), async (re
 });
 
 // ============================================
-// FAQs
+// FAQs - Updated with bilingual support
 // ============================================
 
 // Get FAQs by category
 router.get('/faqs', async (req, res) => {
   try {
-    const { category, locale = 'ar' } = req.query;
+    const { category } = req.query;
 
-    const where = { locale, isPublished: true };
+    const where = { isPublished: true };
     if (category) where.category = category;
 
     const faqs = await prisma.fAQ.findMany({
@@ -299,7 +299,20 @@ router.get('/faqs', async (req, res) => {
   }
 });
 
-// Get all FAQs (admin)
+// Get all FAQs (admin) - includes all categories and languages
+router.get('/faq', requirePermission(PERMISSIONS.CONTENT_READ), async (req, res) => {
+  try {
+    const faqs = await prisma.fAQ.findMany({
+      orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }],
+    });
+    return res.json({ faqs });
+  } catch (error) {
+    console.error('Get all FAQs error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get all FAQs alternate endpoint for backward compatibility
 router.get('/faqs/all', requirePermission(PERMISSIONS.CONTENT_READ), async (req, res) => {
   try {
     const faqs = await prisma.fAQ.findMany({
@@ -312,17 +325,32 @@ router.get('/faqs/all', requirePermission(PERMISSIONS.CONTENT_READ), async (req,
   }
 });
 
-// Create FAQ
+// Create FAQ with bilingual support
 router.post('/faqs', requirePermission(PERMISSIONS.CONTENT_CREATE), async (req, res) => {
   try {
-    const { category, locale = 'ar', question, answer, sortOrder = 0, isPublished = true } = req.body;
+    const { category, questionAr, questionEn, answerAr, answerEn, sortOrder = 0, isPublished = true } = req.body;
 
-    if (!category || !question || !answer) {
-      return res.status(400).json({ error: 'category, question, and answer required' });
+    if (!category) {
+      return res.status(400).json({ error: 'category required' });
     }
 
+    // Support legacy single-language API
+    const { question, answer, locale = 'ar' } = req.body;
+
     const faq = await prisma.fAQ.create({
-      data: { category, locale, question, answer, sortOrder, isPublished },
+      data: { 
+        category, 
+        questionAr: questionAr || question || '', 
+        questionEn: questionEn || '', 
+        answerAr: answerAr || answer || '', 
+        answerEn: answerEn || '', 
+        sortOrder, 
+        isPublished,
+        // Legacy fields for backward compatibility
+        locale,
+        question: questionAr || question || '',
+        answer: answerAr || answer || '',
+      },
     });
 
     return res.json({ ok: true, faq });
@@ -332,16 +360,98 @@ router.post('/faqs', requirePermission(PERMISSIONS.CONTENT_CREATE), async (req, 
   }
 });
 
-// Update FAQ
+// Create FAQ endpoint for ContentPanel
+router.post('/faq', requirePermission(PERMISSIONS.CONTENT_CREATE), async (req, res) => {
+  try {
+    const { category, questionAr, questionEn, answerAr, answerEn, order = 0, isActive = true } = req.body;
+
+    if (!category) {
+      return res.status(400).json({ error: 'category required' });
+    }
+
+    const faq = await prisma.fAQ.create({
+      data: { 
+        category, 
+        questionAr: questionAr || '', 
+        questionEn: questionEn || '', 
+        answerAr: answerAr || '', 
+        answerEn: answerEn || '', 
+        sortOrder: order, 
+        isPublished: isActive,
+        question: questionAr || '',
+        answer: answerAr || '',
+      },
+    });
+
+    return res.json({ ok: true, faq });
+  } catch (error) {
+    console.error('Create FAQ error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update FAQ with bilingual support
 router.put('/faqs/:id', requirePermission(PERMISSIONS.CONTENT_UPDATE), async (req, res) => {
   try {
-    const { question, answer, sortOrder, isPublished } = req.body;
+    const { category, questionAr, questionEn, answerAr, answerEn, sortOrder, isPublished } = req.body;
 
     const updateData = {};
-    if (question) updateData.question = question;
-    if (answer) updateData.answer = answer;
+    if (category) updateData.category = category;
+    if (questionAr !== undefined) {
+      updateData.questionAr = questionAr;
+      updateData.question = questionAr;
+    }
+    if (questionEn !== undefined) updateData.questionEn = questionEn;
+    if (answerAr !== undefined) {
+      updateData.answerAr = answerAr;
+      updateData.answer = answerAr;
+    }
+    if (answerEn !== undefined) updateData.answerEn = answerEn;
     if (typeof sortOrder === 'number') updateData.sortOrder = sortOrder;
     if (typeof isPublished === 'boolean') updateData.isPublished = isPublished;
+
+    // Legacy support
+    const { question, answer } = req.body;
+    if (question && !questionAr) {
+      updateData.question = question;
+      updateData.questionAr = question;
+    }
+    if (answer && !answerAr) {
+      updateData.answer = answer;
+      updateData.answerAr = answer;
+    }
+
+    const faq = await prisma.fAQ.update({
+      where: { id: req.params.id },
+      data: updateData,
+    });
+
+    return res.json({ ok: true, faq });
+  } catch (error) {
+    console.error('Update FAQ error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update FAQ endpoint for ContentPanel
+router.put('/faq/:id', requirePermission(PERMISSIONS.CONTENT_UPDATE), async (req, res) => {
+  try {
+    const { category, questionAr, questionEn, answerAr, answerEn, order, isActive } = req.body;
+
+    const updateData = {};
+    if (category) updateData.category = category;
+    if (questionAr !== undefined) {
+      updateData.questionAr = questionAr;
+      updateData.question = questionAr;
+    }
+    if (questionEn !== undefined) updateData.questionEn = questionEn;
+    if (answerAr !== undefined) {
+      updateData.answerAr = answerAr;
+      updateData.answer = answerAr;
+    }
+    if (answerEn !== undefined) updateData.answerEn = answerEn;
+    if (typeof order === 'number') updateData.sortOrder = order;
+    if (typeof isActive === 'boolean') updateData.isPublished = isActive;
 
     const faq = await prisma.fAQ.update({
       where: { id: req.params.id },
@@ -357,6 +467,17 @@ router.put('/faqs/:id', requirePermission(PERMISSIONS.CONTENT_UPDATE), async (re
 
 // Delete FAQ
 router.delete('/faqs/:id', requirePermission(PERMISSIONS.CONTENT_DELETE), async (req, res) => {
+  try {
+    await prisma.fAQ.delete({ where: { id: req.params.id } });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Delete FAQ error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete FAQ endpoint for ContentPanel
+router.delete('/faq/:id', requirePermission(PERMISSIONS.CONTENT_DELETE), async (req, res) => {
   try {
     await prisma.fAQ.delete({ where: { id: req.params.id } });
     return res.json({ ok: true });
