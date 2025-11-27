@@ -1205,7 +1205,10 @@ function DatesCalculator({ lang }: { lang: Lang }) {
                 <input type="number" min={1300} max={1500} value={hijriStartY} onChange={e => setHijriStartY(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
               </div>
             </div>
-            <div className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2">{a.toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}</div>
+            <div className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2">
+              {lang === 'ar' ? 'الموافق: ' : 'Gregorian: '}
+              {a.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
           </div>
           <div className="rounded-lg sm:rounded-xl border p-2 sm:p-3">
             <div className="text-[10px] sm:text-sm mb-1 sm:mb-2 font-medium text-slate-900">{lang === 'ar' ? 'إلى (هجري)' : 'To (Hijri)'}</div>
@@ -1233,7 +1236,10 @@ function DatesCalculator({ lang }: { lang: Lang }) {
                 <input type="number" min={1300} max={1500} value={hijriEndY} onChange={e => setHijriEndY(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
               </div>
             </div>
-            <div className="text-xs text-slate-500 mt-2">{b.toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}</div>
+            <div className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2">
+              {lang === 'ar' ? 'الموافق: ' : 'Gregorian: '}
+              {b.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
           </div>
         </div>
       )}
