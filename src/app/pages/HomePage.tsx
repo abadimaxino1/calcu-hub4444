@@ -136,41 +136,27 @@ export default function HomePage({ lang, onNavigate }: HomePageProps) {
     lang === 'ar' ? DEFAULT_FAQS.ar : DEFAULT_FAQS.en
   );
 
-  // Fetch CMS content on mount
+  // Fetch CMS content on mount - in parallel for better performance
   useEffect(() => {
-    // Fetch tools
-    fetch('/api/cms/tools?featured=true')
-      .then(r => r.json())
-      .then(data => {
-        if (data.tools && data.tools.length > 0) {
-          setTools(data.tools);
-        }
-      })
-      .catch(() => {/* Use defaults */});
-
-    // Fetch features
-    fetch('/api/cms/features')
-      .then(r => r.json())
-      .then(data => {
-        if (data.features && data.features.length > 0) {
-          setFeatures(data.features);
-        }
-      })
-      .catch(() => {/* Use defaults */});
-
-    // Fetch FAQs for 'global' scope
-    fetch('/api/cms/faqs?category=global')
-      .then(r => r.json())
-      .then(data => {
-        if (data.faqs && data.faqs.length > 0) {
-          const formattedFaqs = data.faqs.map((f: FAQItem) => ({
-            question: lang === 'ar' ? (f.questionAr || f.question || '') : (f.questionEn || f.question || ''),
-            answer: lang === 'ar' ? (f.answerAr || f.answer || '') : (f.answerEn || f.answer || ''),
-          }));
-          setFaqs(formattedFaqs);
-        }
-      })
-      .catch(() => {/* Use defaults */});
+    Promise.all([
+      fetch('/api/cms/tools?featured=true').then(r => r.json()).catch(() => ({ tools: [] })),
+      fetch('/api/cms/features').then(r => r.json()).catch(() => ({ features: [] })),
+      fetch('/api/cms/faqs?category=global').then(r => r.json()).catch(() => ({ faqs: [] })),
+    ]).then(([toolsData, featuresData, faqsData]) => {
+      if (toolsData.tools && toolsData.tools.length > 0) {
+        setTools(toolsData.tools);
+      }
+      if (featuresData.features && featuresData.features.length > 0) {
+        setFeatures(featuresData.features);
+      }
+      if (faqsData.faqs && faqsData.faqs.length > 0) {
+        const formattedFaqs = faqsData.faqs.map((f: FAQItem) => ({
+          question: lang === 'ar' ? (f.questionAr || f.question || '') : (f.questionEn || f.question || ''),
+          answer: lang === 'ar' ? (f.answerAr || f.answer || '') : (f.answerEn || f.answer || ''),
+        }));
+        setFaqs(formattedFaqs);
+      }
+    });
   }, [lang]);
 
   return (

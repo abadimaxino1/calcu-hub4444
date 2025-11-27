@@ -465,12 +465,15 @@ function ToolEditorModal({
                 type="text"
                 value={formData.slug}
                 onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg font-mono"
+                className={`w-full px-3 py-2 border rounded-lg font-mono ${tool ? 'bg-slate-100 cursor-not-allowed' : ''}`}
                 placeholder="pay, eos, work, dates"
                 dir="ltr"
                 required
                 disabled={!!tool}
               />
+              {tool && (
+                <p className="text-xs text-slate-500 mt-1">المعرف لا يمكن تغييره بعد الإنشاء</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">الأيقونة</label>

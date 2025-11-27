@@ -58,7 +58,7 @@ export default function FAQPage({ lang }: { lang: 'ar' | 'en' }) {
     DEFAULT_FAQS[lang]
   );
   const [groupedFaqs, setGroupedFaqs] = useState<Record<string, { question: string; answer: string }[]>>({});
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const c = content[lang];
 
   // Fetch FAQs from CMS API
@@ -115,54 +115,60 @@ export default function FAQPage({ lang }: { lang: 'ar' | 'en' }) {
                 {CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.[lang] || category}
               </h2>
               <div className="space-y-3 sm:space-y-4">
-                {categoryFaqs.map((f, i) => (
-                  <div 
-                    key={`${category}-${i}`} 
-                    className="rounded-2xl border bg-white shadow-sm overflow-hidden"
-                  >
-                    <button
-                      className="w-full text-start p-3 sm:p-4 flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors"
-                      onClick={() => setOpenIndex(openIndex === i ? null : i)}
+                {categoryFaqs.map((f, i) => {
+                  const faqId = `${category}-${i}`;
+                  return (
+                    <div 
+                      key={faqId} 
+                      className="rounded-2xl border bg-white shadow-sm overflow-hidden"
                     >
-                      <h3 className="font-semibold text-sm sm:text-base text-slate-900">{f.question}</h3>
-                      <span className="text-slate-600 text-lg flex-shrink-0">
-                        {openIndex === i ? '−' : '+'}
-                      </span>
-                    </button>
-                    {openIndex === i && (
-                      <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-                        <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">{f.answer}</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      <button
+                        className="w-full text-start p-3 sm:p-4 flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors"
+                        onClick={() => setOpenId(openId === faqId ? null : faqId)}
+                      >
+                        <h3 className="font-semibold text-sm sm:text-base text-slate-900">{f.question}</h3>
+                        <span className="text-slate-600 text-lg flex-shrink-0">
+                          {openId === faqId ? '−' : '+'}
+                        </span>
+                      </button>
+                      {openId === faqId && (
+                        <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+                          <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">{f.answer}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))
         ) : (
           /* Fallback: Display flat list */
           <div className="space-y-3 sm:space-y-4">
-            {faqs.map((f, i) => (
-              <div 
-                key={i} 
-                className="rounded-2xl border bg-white shadow-sm overflow-hidden"
-              >
-                <button
-                  className="w-full text-start p-3 sm:p-4 flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors"
-                  onClick={() => setOpenIndex(openIndex === i ? null : i)}
+            {faqs.map((f, i) => {
+              const faqId = `flat-${i}`;
+              return (
+                <div 
+                  key={i} 
+                  className="rounded-2xl border bg-white shadow-sm overflow-hidden"
                 >
-                  <h3 className="font-semibold text-sm sm:text-base text-slate-900">{f.question}</h3>
-                  <span className="text-slate-600 text-lg flex-shrink-0">
-                    {openIndex === i ? '−' : '+'}
-                  </span>
-                </button>
-                {openIndex === i && (
-                  <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-                    <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">{f.answer}</p>
-                  </div>
-                )}
-              </div>
-            ))}
+                  <button
+                    className="w-full text-start p-3 sm:p-4 flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors"
+                    onClick={() => setOpenId(openId === faqId ? null : faqId)}
+                  >
+                    <h3 className="font-semibold text-sm sm:text-base text-slate-900">{f.question}</h3>
+                    <span className="text-slate-600 text-lg flex-shrink-0">
+                      {openId === faqId ? '−' : '+'}
+                    </span>
+                  </button>
+                  {openId === faqId && (
+                    <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+                      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">{f.answer}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

@@ -62,9 +62,9 @@ router.post('/tools', requirePermission(PERMISSIONS.CONTENT_CREATE), async (req,
         icon: icon || '🔧',
         color: color || 'from-blue-500 to-indigo-600',
         sortOrder: sortOrder || 0,
-        isFeaturedOnHome: isFeaturedOnHome !== false,
-        isVisibleOnTools: isVisibleOnTools !== false,
-        isPublished: isPublished !== false,
+        isFeaturedOnHome: isFeaturedOnHome === undefined ? true : Boolean(isFeaturedOnHome),
+        isVisibleOnTools: isVisibleOnTools === undefined ? true : Boolean(isVisibleOnTools),
+        isPublished: isPublished === undefined ? true : Boolean(isPublished),
       },
     });
 
@@ -163,7 +163,7 @@ router.post('/features', requirePermission(PERMISSIONS.CONTENT_CREATE), async (r
         descEn: descEn || '',
         icon: icon || '✓',
         sortOrder: sortOrder || 0,
-        isPublished: isPublished !== false,
+        isPublished: isPublished === undefined ? true : Boolean(isPublished),
       },
     });
 
@@ -409,10 +409,14 @@ router.post('/seed', requirePermission(PERMISSIONS.SYSTEM_UPDATE), async (req, r
       },
     ];
 
-    // Clear existing features and insert new ones
-    await prisma.benefitFeature.deleteMany({});
-    for (const feature of defaultFeatures) {
-      await prisma.benefitFeature.create({ data: feature });
+    // Use upsert with unique identifier based on title for features
+    // First get existing features count
+    const existingFeatures = await prisma.benefitFeature.count();
+    if (existingFeatures === 0) {
+      // Only seed if no features exist
+      for (const feature of defaultFeatures) {
+        await prisma.benefitFeature.create({ data: feature });
+      }
     }
 
     // Seed default FAQs
