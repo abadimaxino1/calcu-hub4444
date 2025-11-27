@@ -316,12 +316,14 @@ export default function App() {
   // Handle /admin, /admin/, /admin/login, /admin/dashboard, etc.
   const isAdminRoute = route === '/admin' || route.startsWith('/admin/') || route.startsWith('/admin');
 
-  // For admin routes, render only the AdminShell
+  // For admin routes, render only the AdminShell with complete isolation
   if (isAdminRoute) {
     return (
-      <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
-        <AdminShell />
-      </React.Suspense>
+      <div className="fixed inset-0 z-[9999] bg-white">
+        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
+          <AdminShell />
+        </React.Suspense>
+      </div>
     );
   }
 
