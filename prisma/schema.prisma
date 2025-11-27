@@ -1,0 +1,353 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id              String              @id @default(uuid())
+  email           String              @unique
+  name            String
+  hashedPassword  String
+  role            Role                @default(VIEW_ONLY)
+  isActive        Boolean             @default(true)
+  totpSecret      String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  activityLogs    AdminActivityLog[]
+  blogPosts       BlogPost[]
+  sessions        Session[]
+  staticPageEdits StaticPageContent[] @relation("LastEditor")
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+  ipAddress String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model PageView {
+  id          String   @id @default(uuid())
+  sessionId   String
+  userId      String?
+  pagePath    String
+  referrer    String?
+  userAgent   String?
+  country     String?
+  device      String?
+  browser     String?
+  locale      String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+  createdAt   DateTime @default(now())
+
+  @@index([pagePath])
+  @@index([createdAt])
+  @@index([sessionId])
+  @@index([utmSource])
+  @@index([country])
+  @@map("page_views")
+}
+
+model CalculationEvent {
+  id             String   @id @default(uuid())
+  sessionId      String
+  userId         String?
+  calculatorType String
+  inputSummary   String
+  resultSummary  String
+  durationMs     Int      @default(0)
+  locale         String?
+  country        String?
+  device         String?
+  utmSource      String?
+  utmMedium      String?
+  utmCampaign    String?
+  createdAt      DateTime @default(now())
+
+  @@index([calculatorType])
+  @@index([createdAt])
+  @@index([locale])
+  @@map("calculation_events")
+}
+
+model AdEvent {
+  id        String   @id @default(uuid())
+  adSlotId  String
+  eventType String
+  sessionId String
+  pagePath  String
+  country   String?
+  device    String?
+  locale    String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+  adSlot    AdSlot   @relation(fields: [adSlotId], references: [id])
+
+  @@index([adSlotId])
+  @@index([createdAt])
+  @@index([eventType])
+  @@index([country])
+  @@index([sessionId])
+  @@map("ad_events")
+}
+
+model AdSlot {
+  id              String    @id @default(uuid())
+  name            String    @unique
+  pagePathPattern String
+  positionKey     String
+  isActive        Boolean   @default(true)
+  eCPM            Float     @default(0)
+  cpc             Float     @default(0)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  events          AdEvent[]
+
+  @@map("ad_slots")
+}
+
+model RevenueSnapshot {
+  id            String   @id @default(uuid())
+  source        String
+  dateTime      DateTime
+  revenueAmount Float
+  currency      String   @default("SAR")
+  impressions   Int      @default(0)
+  clicks        Int      @default(0)
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  @@index([dateTime])
+  @@index([source])
+  @@map("revenue_snapshots")
+}
+
+model SeoConfig {
+  id              String   @id @default(uuid())
+  pageKey         String
+  locale          String   @default("ar")
+  title           String
+  description     String
+  canonicalUrl    String?
+  ogTitle         String?
+  ogDescription   String?
+  ogImageUrl      String?
+  twitterCardType String   @default("summary_large_image")
+  jsonLd          String?
+  isIndexable     Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([pageKey, locale])
+  @@map("seo_configs")
+}
+
+model StaticPageContent {
+  id             String   @id @default(uuid())
+  slug           String
+  locale         String   @default("ar")
+  title          String
+  bodyMarkdown   String
+  lastEditedById String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lastEditedBy   User?    @relation("LastEditor", fields: [lastEditedById], references: [id])
+
+  @@unique([slug, locale])
+  @@map("static_page_contents")
+}
+
+model BlogPost {
+  id           String    @id @default(uuid())
+  slug         String    @unique
+  title        String
+  excerpt      String
+  bodyMarkdown String
+  heroImageUrl String?
+  tags         String
+  authorId     String
+  isPublished  Boolean   @default(false)
+  publishedAt  DateTime?
+  viewCount    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  author       User      @relation(fields: [authorId], references: [id])
+
+  @@index([isPublished])
+  @@index([publishedAt])
+  @@map("blog_posts")
+}
+
+model FAQ {
+  id          String   @id @default(uuid())
+  category    String
+  locale      String   @default("ar")
+  question    String
+  answer      String
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([locale])
+  @@map("faqs")
+}
+
+model AdminActivityLog {
+  id          String   @id @default(uuid())
+  adminUserId String
+  actionType  String
+  targetType  String?
+  targetId    String?
+  detailsJson String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  adminUser   User     @relation(fields: [adminUserId], references: [id])
+
+  @@index([adminUserId])
+  @@index([actionType])
+  @@index([createdAt])
+  @@map("admin_activity_logs")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  type      String   @default("string")
+  category  String   @default("general")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  isEnabled   Boolean  @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("feature_flags")
+}
+
+model AnalyticsDaily {
+  id             String   @id @default(uuid())
+  date           DateTime @unique
+  pageViews      Int      @default(0)
+  uniqueVisitors Int      @default(0)
+  calculations   Int      @default(0)
+  adImpressions  Int      @default(0)
+  adClicks       Int      @default(0)
+  revenue        Float    @default(0)
+  topPages       String?
+  topCalculators String?
+  createdAt      DateTime @default(now())
+
+  @@index([date])
+  @@map("analytics_daily")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  IT
+  DESIGNER
+  CONTENT_WRITER
+  ADS_MANAGER
+  ANALYST
+  VIEW_ONLY
+}
+
+// ============================================
+// Revenue Model & Monetization
+// ============================================
+
+model RevenueModel {
+  id            String    @id @default(uuid())
+  name          String    @unique
+  description   String?
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+  assumptions   String    // JSON: eCPM/CPC/CTR by slot, device, country
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([isActive])
+  @@index([effectiveFrom])
+  @@map("revenue_models")
+}
+
+model MonetizationAlert {
+  id          String    @id @default(uuid())
+  alertType   String    // HIGH_CTR, SUSPICIOUS_CLICKS, ABNORMAL_RPM, LOW_FILL_RATE
+  severity    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  adSlotId    String?
+  pagePath    String?
+  country     String?
+  device      String?
+  periodStart DateTime
+  periodEnd   DateTime
+  metrics     String    // JSON: actual values, thresholds, deviations
+  message     String
+  isResolved  Boolean   @default(false)
+  resolvedById String?
+  resolvedAt  DateTime?
+  resolvedNote String?
+  createdAt   DateTime  @default(now())
+
+  @@index([alertType])
+  @@index([severity])
+  @@index([isResolved])
+  @@index([createdAt])
+  @@map("monetization_alerts")
+}
+
+model TrafficSession {
+  id          String   @id @default(uuid())
+  sessionId   String   @unique
+  firstPagePath String
+  referrer    String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+  country     String?
+  device      String?
+  locale      String?
+  pageViews   Int      @default(1)
+  calculations Int     @default(0)
+  adImpressions Int    @default(0)
+  adClicks    Int      @default(0)
+  startedAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@index([utmSource])
+  @@index([referrer])
+  @@index([startedAt])
+  @@index([country])
+  @@map("traffic_sessions")
+}

@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /admin/
+Sitemap: /sitemap.xml
+# Crawl-delay: 10
+# If you use preview or staging hosts, add them here with Disallow entries
+# Revision: added by audit script on 2025-11-14

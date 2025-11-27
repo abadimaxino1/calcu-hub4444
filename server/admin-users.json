@@ -1,0 +1,44 @@
+{
+  "abdullah": {
+    "passwordHash": "$2a$10$PHaw0i7DZj78ltbac3edlO5S4Zd1z0GZYfoS4jq35xqfoEekgqoC2",
+    "createdAt": 1763081556621,
+    "roles": [
+      "Admin"
+    ]
+  },
+  "supervisor": {
+    "passwordHash": "$2a$10$xGb2Uc9RJg/TJG5oL35bE.df.YMpFBbfMfbABxmA/IffJnAbwEJFa",
+    "createdAt": 1763081556621,
+    "roles": [
+      "Supervisor"
+    ]
+  },
+  "analyst": {
+    "passwordHash": "$2a$10$jfyEAVfrKgyT3sbF6JLDqeiNglGeUNvsR/gAGl0LdjHAvc4b0xirS",
+    "createdAt": 1763081556621,
+    "roles": [
+      "Analyst"
+    ]
+  },
+  "it": {
+    "passwordHash": "$2a$10$eW2Ng7lBZUoTT8waRH6ux.68xlvQyHjPS0ybPoQi6b4lzRltHS4ES",
+    "createdAt": 1763081556621,
+    "roles": [
+      "IT"
+    ]
+  },
+  "designer": {
+    "passwordHash": "$2a$10$jgWin3SRcZiVIE.0iBPiyeHZsfoZyurhoRq.Gf1ei8hY9RkzGEId2",
+    "createdAt": 1763081556621,
+    "roles": [
+      "Designer"
+    ]
+  },
+  "staff": {
+    "passwordHash": "$2a$10$ri2jMBUjOBDs09H4FxlREejtstXMdE4kzP2cZjECjV6qNYGmQ86y6",
+    "createdAt": 1763081556621,
+    "roles": [
+      "Staff"
+    ]
+  }
+}

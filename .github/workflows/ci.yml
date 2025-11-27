@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run unit tests (vitest)
+        run: npm test
+
+      - name: Run headless smoke tests
+        run: npm run test:headless
+
+      - name: Build application
+        run: npm run build
+
+      - name: Build PWA (Workbox SW)
+        run: npm run build:pwa
+
+      - name: Build CSS
+        run: npm run build:css

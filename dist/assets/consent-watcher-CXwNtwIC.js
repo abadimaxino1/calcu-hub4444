@@ -1,0 +1,1 @@
+const a=["calcu_consent","calcu_consent_v1","consent"];try{if(typeof window<"u"&&window&&window.localStorage){const t=Object.getPrototypeOf(window.localStorage),e=t.setItem;t.setItem=function(c,o){try{e.call(this,c,o)}catch{}try{if(a.includes(c))try{window.__calcuConsentChanged&&window.__calcuConsentChanged()}catch{}}catch{}}}}catch{}const s={};export{s as default};

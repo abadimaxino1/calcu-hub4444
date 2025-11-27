@@ -1,0 +1,110 @@
+[
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "googletagmanager"
+  },
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "gtag("
+  },
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "google-analytics"
+  },
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "adsbygoogle"
+  },
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "pagead2.googlesyndication"
+  },
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "data-ad-client"
+  },
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "vitest"
+  },
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "playwright"
+  },
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "TestPanel"
+  },
+  {
+    "file": "audit-artifacts\\analytics-findings.json",
+    "pattern": "/test"
+  },
+  {
+    "file": "audit-artifacts\\REPORT.md",
+    "pattern": "/test"
+  },
+  {
+    "file": "package-lock.json",
+    "pattern": "google-analytics"
+  },
+  {
+    "file": "package-lock.json",
+    "pattern": "vitest"
+  },
+  {
+    "file": "package-lock.json",
+    "pattern": "playwright"
+  },
+  {
+    "file": "package.json",
+    "pattern": "vitest"
+  },
+  {
+    "file": "public\\service-worker.js",
+    "pattern": "/test"
+  },
+  {
+    "file": "README.md",
+    "pattern": "TestPanel"
+  },
+  {
+    "file": "src\\App.tsx",
+    "pattern": "adsbygoogle"
+  },
+  {
+    "file": "src\\App.tsx",
+    "pattern": "data-ad-client"
+  },
+  {
+    "file": "src\\App.tsx",
+    "pattern": "TestPanel"
+  },
+  {
+    "file": "src\\lib\\analytics.ts",
+    "pattern": "googletagmanager"
+  },
+  {
+    "file": "src\\lib\\analytics.ts",
+    "pattern": "gtag("
+  },
+  {
+    "file": "src\\lib\\analytics.ts",
+    "pattern": "adsbygoogle"
+  },
+  {
+    "file": "src\\lib\\analytics.ts",
+    "pattern": "pagead2.googlesyndication"
+  },
+  {
+    "file": "src\\lib\\analytics.ts",
+    "pattern": "data-ad-client"
+  },
+  {
+    "file": "src\\lib\\__tests__\\eos.test.ts",
+    "pattern": "vitest"
+  },
+  {
+    "file": "vitest.config.ts",
+    "pattern": "vitest"
+  }
+]
