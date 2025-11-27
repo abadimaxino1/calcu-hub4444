@@ -36,6 +36,25 @@ export default function SettingsPanel() {
     isEnabled: false,
     enabledForRoles: [] as string[],
   });
+  
+  // Delete confirmation modal state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; featureId: string; featureName: string }>({
+    show: false,
+    featureId: '',
+    featureName: '',
+  });
+  
+  // Toast notification state
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({
+    show: false,
+    message: '',
+    type: 'success',
+  });
+  
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+  };
 
   useEffect(() => {
     fetchData();
@@ -97,16 +116,16 @@ export default function SettingsPanel() {
         fetchData();
       } else {
         const data = await response.json();
-        alert(data.error || 'Failed to update');
+        showToast(data.error || 'Failed to update', 'error');
       }
     } catch (err) {
-      alert('Failed to update');
+      showToast('Failed to update', 'error');
     }
   };
 
   const handleAddFeature = async () => {
     if (!newFeature.key || !newFeature.name) {
-      alert('الرجاء إدخال المفتاح والاسم');
+      showToast('الرجاء إدخال المفتاح والاسم', 'error');
       return;
     }
     
@@ -121,18 +140,24 @@ export default function SettingsPanel() {
       if (response.ok) {
         setShowAddFeature(false);
         setNewFeature({ key: '', name: '', description: '', isEnabled: false, enabledForRoles: [] });
+        showToast('تمت إضافة الميزة بنجاح', 'success');
         fetchData();
       } else {
         const data = await response.json();
-        alert(data.error || 'Failed to add feature');
+        showToast(data.error || 'Failed to add feature', 'error');
       }
     } catch (err) {
-      alert('Failed to add feature');
+      showToast('Failed to add feature', 'error');
     }
   };
 
-  const handleDeleteFeature = async (featureId: string) => {
-    if (!confirm('هل تريد حذف هذه الميزة؟')) return;
+  const confirmDeleteFeature = (featureId: string, featureName: string) => {
+    setDeleteConfirm({ show: true, featureId, featureName });
+  };
+
+  const handleDeleteFeature = async () => {
+    const { featureId } = deleteConfirm;
+    setDeleteConfirm({ show: false, featureId: '', featureName: '' });
     
     try {
       const response = await fetch(`/api/system/features/${featureId}`, {
@@ -141,13 +166,14 @@ export default function SettingsPanel() {
       });
 
       if (response.ok) {
+        showToast('تم حذف الميزة بنجاح', 'success');
         fetchData();
       } else {
         const data = await response.json();
-        alert(data.error || 'Failed to delete');
+        showToast(data.error || 'Failed to delete', 'error');
       }
     } catch (err) {
-      alert('Failed to delete');
+      showToast('Failed to delete', 'error');
     }
   };
 
@@ -175,6 +201,41 @@ export default function SettingsPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
+          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm.show && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">تأكيد الحذف</h3>
+            <p className="text-slate-600 mb-4">
+              هل تريد حذف الميزة "{deleteConfirm.featureName}"؟
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteFeature}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              >
+                حذف
+              </button>
+              <button
+                onClick={() => setDeleteConfirm({ show: false, featureId: '', featureName: '' })}
+                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex items-center gap-4 border-b border-slate-200">
         {tabs.map((tab) => (
@@ -376,9 +437,10 @@ export default function SettingsPanel() {
                         />
                       </button>
                       <button
-                        onClick={() => handleDeleteFeature(feature.id)}
-                        className="text-red-500 hover:text-red-700 text-sm"
+                        onClick={() => confirmDeleteFeature(feature.id, feature.name)}
+                        className="text-red-500 hover:text-red-700 text-sm p-1"
                         title="حذف"
+                        aria-label="حذف الميزة"
                       >
                         🗑️
                       </button>
