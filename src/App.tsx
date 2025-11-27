@@ -312,6 +312,18 @@ export default function App() {
     }
   };
 
+  // Check if we're on admin route to hide main app chrome
+  const isAdminRoute = route === '/admin' || route === '/admin/login';
+
+  // For admin routes, render only the AdminShell
+  if (isAdminRoute) {
+    return (
+      <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
+        <AdminShell />
+      </React.Suspense>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="sticky top-0 z-10 bg-white border-b shadow-sm">
@@ -405,9 +417,6 @@ export default function App() {
             {tab === "eos" && <EosCalc lang={lang} />}
             {tab === "dates" && <DatesCalculator lang={lang} />}
           </div>
-        ) : route === '/admin' ? (
-          // AdminShell renders below; keep main content empty to avoid duplicate login UI
-          null
         ) : route === '/privacy' ? (
           <PrivacyPage lang={lang} />
         ) : route === '/terms' ? (
@@ -460,12 +469,6 @@ export default function App() {
       </footer>
 
       <ConsentBanner lang={lang} />
-      {/* Admin routes: lazy load admin shell */}
-      {(route === '/admin' || route === '/admin/login') && (
-        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
-          <AdminShell />
-        </React.Suspense>
-      )}
       {typeof window !== 'undefined' && (() => {
         try {
           // trigger analytics loader if consent already present; listen for later changes via global
