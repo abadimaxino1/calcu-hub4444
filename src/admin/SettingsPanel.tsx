@@ -26,6 +26,35 @@ export default function SettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingItem, setEditingItem] = useState<any>(null);
+  
+  // New feature modal state
+  const [showAddFeature, setShowAddFeature] = useState(false);
+  const [newFeature, setNewFeature] = useState({
+    key: '',
+    name: '',
+    description: '',
+    isEnabled: false,
+    enabledForRoles: [] as string[],
+  });
+  
+  // Delete confirmation modal state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; featureId: string; featureName: string }>({
+    show: false,
+    featureId: '',
+    featureName: '',
+  });
+  
+  // Toast notification state
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({
+    show: false,
+    message: '',
+    type: 'success',
+  });
+  
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+  };
 
   useEffect(() => {
     fetchData();
@@ -87,10 +116,64 @@ export default function SettingsPanel() {
         fetchData();
       } else {
         const data = await response.json();
-        alert(data.error || 'Failed to update');
+        showToast(data.error || 'Failed to update', 'error');
       }
     } catch (err) {
-      alert('Failed to update');
+      showToast('Failed to update', 'error');
+    }
+  };
+
+  const handleAddFeature = async () => {
+    if (!newFeature.key || !newFeature.name) {
+      showToast('الرجاء إدخال المفتاح والاسم', 'error');
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/system/features', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(newFeature),
+      });
+
+      if (response.ok) {
+        setShowAddFeature(false);
+        setNewFeature({ key: '', name: '', description: '', isEnabled: false, enabledForRoles: [] });
+        showToast('تمت إضافة الميزة بنجاح', 'success');
+        fetchData();
+      } else {
+        const data = await response.json();
+        showToast(data.error || 'Failed to add feature', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to add feature', 'error');
+    }
+  };
+
+  const confirmDeleteFeature = (featureId: string, featureName: string) => {
+    setDeleteConfirm({ show: true, featureId, featureName });
+  };
+
+  const handleDeleteFeature = async () => {
+    const { featureId } = deleteConfirm;
+    setDeleteConfirm({ show: false, featureId: '', featureName: '' });
+    
+    try {
+      const response = await fetch(`/api/system/features/${featureId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        showToast('تم حذف الميزة بنجاح', 'success');
+        fetchData();
+      } else {
+        const data = await response.json();
+        showToast(data.error || 'Failed to delete', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to delete', 'error');
     }
   };
 
@@ -118,6 +201,41 @@ export default function SettingsPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
+          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm.show && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">تأكيد الحذف</h3>
+            <p className="text-slate-600 mb-4">
+              هل تريد حذف الميزة "{deleteConfirm.featureName}"؟
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteFeature}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              >
+                حذف
+              </button>
+              <button
+                onClick={() => setDeleteConfirm({ show: false, featureId: '', featureName: '' })}
+                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex items-center gap-4 border-b border-slate-200">
         {tabs.map((tab) => (
@@ -206,15 +324,88 @@ export default function SettingsPanel() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-slate-800">Feature Flags</h3>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+            <button 
+              onClick={() => setShowAddFeature(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+            >
               <span>+</span>
               <span>إضافة ميزة</span>
             </button>
           </div>
 
+          {/* Add Feature Modal */}
+          {showAddFeature && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
+                <h3 className="text-lg font-semibold mb-4">إضافة ميزة جديدة</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">المفتاح (key)</label>
+                    <input
+                      type="text"
+                      value={newFeature.key}
+                      onChange={(e) => setNewFeature({ ...newFeature, key: e.target.value })}
+                      placeholder="feature_key"
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">الاسم</label>
+                    <input
+                      type="text"
+                      value={newFeature.name}
+                      onChange={(e) => setNewFeature({ ...newFeature, name: e.target.value })}
+                      placeholder="اسم الميزة"
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">الوصف</label>
+                    <textarea
+                      value={newFeature.description}
+                      onChange={(e) => setNewFeature({ ...newFeature, description: e.target.value })}
+                      placeholder="وصف الميزة"
+                      rows={3}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="featureEnabled"
+                      checked={newFeature.isEnabled}
+                      onChange={(e) => setNewFeature({ ...newFeature, isEnabled: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                    <label htmlFor="featureEnabled" className="text-sm text-slate-700">مفعّل</label>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={handleAddFeature}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  >
+                    إضافة
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAddFeature(false);
+                      setNewFeature({ key: '', name: '', description: '', isEnabled: false, enabledForRoles: [] });
+                    }}
+                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {features.length === 0 ? (
             <div className="bg-slate-50 rounded-lg p-8 text-center text-slate-600">
-              لا توجد ميزات.
+              <p className="mb-4">لا توجد ميزات.</p>
+              <p className="text-sm text-slate-500">اضغط على "إضافة ميزة" لإنشاء ميزة جديدة.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -232,18 +423,28 @@ export default function SettingsPanel() {
                         {feature.key}
                       </p>
                     </div>
-                    <button
-                      onClick={() => handleToggleFeature(feature)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                        feature.isEnabled ? 'bg-green-600' : 'bg-slate-200'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                          feature.isEnabled ? 'translate-x-6' : 'translate-x-1'
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleToggleFeature(feature)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                          feature.isEnabled ? 'bg-green-600' : 'bg-slate-200'
                         }`}
-                      />
-                    </button>
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                            feature.isEnabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                      <button
+                        onClick={() => confirmDeleteFeature(feature.id, feature.name)}
+                        className="text-red-500 hover:text-red-700 text-sm p-1"
+                        title="حذف"
+                        aria-label="حذف الميزة"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                   <p className="text-sm text-slate-600 mb-3">{feature.description}</p>
                   {feature.enabledForRoles && feature.enabledForRoles.length > 0 && (

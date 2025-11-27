@@ -312,6 +312,36 @@ export default function App() {
     }
   };
 
+  // Check if we're on admin route to hide main app chrome
+  // Handle /admin, /admin/, /admin/login, /admin/dashboard, etc.
+  const isAdminRoute = route === '/admin' || route.startsWith('/admin/') || route.startsWith('/admin');
+
+  // Hide body scrolling when on admin routes to prevent any main app content from showing
+  React.useEffect(() => {
+    if (isAdminRoute) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [isAdminRoute]);
+
+  // For admin routes, render only the AdminShell with complete isolation
+  if (isAdminRoute) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-white overflow-auto">
+        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
+          <AdminShell />
+        </React.Suspense>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="sticky top-0 z-10 bg-white border-b shadow-sm">
@@ -405,9 +435,6 @@ export default function App() {
             {tab === "eos" && <EosCalc lang={lang} />}
             {tab === "dates" && <DatesCalculator lang={lang} />}
           </div>
-        ) : route === '/admin' ? (
-          // AdminShell renders below; keep main content empty to avoid duplicate login UI
-          null
         ) : route === '/privacy' ? (
           <PrivacyPage lang={lang} />
         ) : route === '/terms' ? (
@@ -460,12 +487,6 @@ export default function App() {
       </footer>
 
       <ConsentBanner lang={lang} />
-      {/* Admin routes: lazy load admin shell */}
-      {(route === '/admin' || route === '/admin/login') && (
-        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
-          <AdminShell />
-        </React.Suspense>
-      )}
       {typeof window !== 'undefined' && (() => {
         try {
           // trigger analytics loader if consent already present; listen for later changes via global
@@ -1054,6 +1075,22 @@ function EosCalc({ lang }: { lang: Lang }) {
 // =============================================================
 // diffBetween, calculateWorkingDays are implemented in src/lib/dates
 
+// Hijri months with numbers for user clarity
+const HIJRI_MONTHS_LIST = [
+  { num: 1, en: 'Muharram', ar: 'محرم' },
+  { num: 2, en: 'Safar', ar: 'صفر' },
+  { num: 3, en: 'Rabi al-Awwal', ar: 'ربيع الأول' },
+  { num: 4, en: 'Rabi al-Thani', ar: 'ربيع الثاني' },
+  { num: 5, en: 'Jumada al-Awwal', ar: 'جمادى الأولى' },
+  { num: 6, en: 'Jumada al-Thani', ar: 'جمادى الآخرة' },
+  { num: 7, en: 'Rajab', ar: 'رجب' },
+  { num: 8, en: 'Shaban', ar: 'شعبان' },
+  { num: 9, en: 'Ramadan', ar: 'رمضان' },
+  { num: 10, en: 'Shawwal', ar: 'شوال' },
+  { num: 11, en: 'Dhu al-Qadah', ar: 'ذو القعدة' },
+  { num: 12, en: 'Dhu al-Hijjah', ar: 'ذو الحجة' },
+];
+
 function DatesCalculator({ lang }: { lang: Lang }) {
   const [calendarType, setCalendarType] = useState<'gregorian' | 'hijri'>('gregorian');
   const [start, setStart] = useState(() => new Date().toISOString().slice(0,10));
@@ -1172,14 +1209,27 @@ function DatesCalculator({ lang }: { lang: Lang }) {
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'شهر' : 'Month'}</label>
-                <input type="number" min={1} max={12} value={hijriStartM} onChange={e => setHijriStartM(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
+                <select 
+                  value={hijriStartM} 
+                  onChange={e => setHijriStartM(+e.target.value)} 
+                  className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900"
+                >
+                  {HIJRI_MONTHS_LIST.map(m => (
+                    <option key={m.num} value={m.num}>
+                      {m.num} - {lang === 'ar' ? m.ar : m.en}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'سنة' : 'Year'}</label>
                 <input type="number" min={1300} max={1500} value={hijriStartY} onChange={e => setHijriStartY(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
               </div>
             </div>
-            <div className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2">{a.toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}</div>
+            <div className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2">
+              {lang === 'ar' ? 'الموافق: ' : 'Gregorian: '}
+              {a.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
           </div>
           <div className="rounded-lg sm:rounded-xl border p-2 sm:p-3">
             <div className="text-[10px] sm:text-sm mb-1 sm:mb-2 font-medium text-slate-900">{lang === 'ar' ? 'إلى (هجري)' : 'To (Hijri)'}</div>
@@ -1190,14 +1240,27 @@ function DatesCalculator({ lang }: { lang: Lang }) {
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'شهر' : 'Month'}</label>
-                <input type="number" min={1} max={12} value={hijriEndM} onChange={e => setHijriEndM(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
+                <select 
+                  value={hijriEndM} 
+                  onChange={e => setHijriEndM(+e.target.value)} 
+                  className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900"
+                >
+                  {HIJRI_MONTHS_LIST.map(m => (
+                    <option key={m.num} value={m.num}>
+                      {m.num} - {lang === 'ar' ? m.ar : m.en}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'سنة' : 'Year'}</label>
                 <input type="number" min={1300} max={1500} value={hijriEndY} onChange={e => setHijriEndY(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
               </div>
             </div>
-            <div className="text-xs text-slate-500 mt-2">{b.toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}</div>
+            <div className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2">
+              {lang === 'ar' ? 'الموافق: ' : 'Gregorian: '}
+              {b.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
           </div>
         </div>
       )}
