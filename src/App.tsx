@@ -313,7 +313,8 @@ export default function App() {
   };
 
   // Check if we're on admin route to hide main app chrome
-  const isAdminRoute = route === '/admin' || route === '/admin/login';
+  // Handle /admin, /admin/, /admin/login, /admin/dashboard, etc.
+  const isAdminRoute = route === '/admin' || route.startsWith('/admin/') || route.startsWith('/admin');
 
   // For admin routes, render only the AdminShell
   if (isAdminRoute) {
