@@ -175,20 +175,28 @@ model StaticPageContent {
 }
 
 model BlogPost {
-  id           String    @id @default(uuid())
-  slug         String    @unique
-  title        String
-  excerpt      String
-  bodyMarkdown String
-  heroImageUrl String?
-  tags         String
-  authorId     String
-  isPublished  Boolean   @default(false)
-  publishedAt  DateTime?
-  viewCount    Int       @default(0)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  author       User      @relation(fields: [authorId], references: [id])
+  id             String    @id @default(uuid())
+  slug           String    @unique
+  titleAr        String    @default("")
+  titleEn        String    @default("")
+  excerptAr      String    @default("")
+  excerptEn      String    @default("")
+  bodyMarkdownAr String    @default("")
+  bodyMarkdownEn String    @default("")
+  heroImageUrl   String?
+  tags           String
+  authorId       String
+  isPublished    Boolean   @default(false)
+  publishedAt    DateTime?
+  viewCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  author         User      @relation(fields: [authorId], references: [id])
+
+  // Legacy fields for backward compatibility
+  title          String    @default("")
+  excerpt        String    @default("")
+  bodyMarkdown   String    @default("")
 
   @@index([isPublished])
   @@index([publishedAt])
@@ -197,17 +205,23 @@ model BlogPost {
 
 model FAQ {
   id          String   @id @default(uuid())
-  category    String
-  locale      String   @default("ar")
-  question    String
-  answer      String
+  category    String   // 'global', 'pay', 'eos', 'work', 'dates'
+  questionAr  String   @default("")
+  questionEn  String   @default("")
+  answerAr    String   @default("")
+  answerEn    String   @default("")
   sortOrder   Int      @default(0)
   isPublished Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Legacy fields for backward compatibility
+  locale      String   @default("ar")
+  question    String   @default("")
+  answer      String   @default("")
+
   @@index([category])
-  @@index([locale])
+  @@index([isPublished])
   @@map("faqs")
 }
 
@@ -350,4 +364,49 @@ model TrafficSession {
   @@index([startedAt])
   @@index([country])
   @@map("traffic_sessions")
+}
+
+// ============================================
+// CMS: Tool Cards (Calculator listings)
+// ============================================
+
+model ToolCard {
+  id                String   @id @default(uuid())
+  slug              String   @unique // e.g., 'pay', 'eos', 'work', 'dates'
+  titleAr           String
+  titleEn           String
+  descAr            String
+  descEn            String
+  icon              String   // emoji or icon name
+  color             String   @default("from-blue-500 to-indigo-600") // gradient class
+  sortOrder         Int      @default(0)
+  isFeaturedOnHome  Boolean  @default(true)
+  isVisibleOnTools  Boolean  @default(true)
+  isPublished       Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([isFeaturedOnHome])
+  @@index([isVisibleOnTools])
+  @@map("tool_cards")
+}
+
+// ============================================
+// CMS: Benefit Features ("Why use our calculators?")
+// ============================================
+
+model BenefitFeature {
+  id          String   @id @default(uuid())
+  titleAr     String
+  titleEn     String
+  descAr      String
+  descEn      String
+  icon        String   // emoji or icon name
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isPublished])
+  @@map("benefit_features")
 }
