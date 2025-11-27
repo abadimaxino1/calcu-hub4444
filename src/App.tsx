@@ -405,9 +405,9 @@ export default function App() {
       {/* Service worker update banner */}
       {swUpdated && (
         <div className="max-w-5xl mx-auto px-4 py-2">
-          <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm">{lang === 'ar' ? 'تحديث جديد متاح' : 'A new version is available'}</div>
-            <div className="flex gap-2">
+          <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3 flex flex-col sm:flex-row items-center gap-3">
+            <div className="text-sm flex-1">{lang === 'ar' ? 'تحديث جديد متاح' : 'A new version is available'}</div>
+            <div className="flex gap-2 flex-shrink-0">
               <button className="px-4 min-h-[44px] min-w-[44px] rounded-lg border bg-white touch-manipulation" onClick={() => setSwUpdated(false)}>{lang === 'ar' ? 'تجاهل' : 'Dismiss'}</button>
               <button className="px-4 min-h-[44px] min-w-[44px] rounded-lg bg-blue-600 text-white touch-manipulation" onClick={applyUpdate}>{lang === 'ar' ? 'تحديث الآن' : 'Update now'}</button>
             </div>

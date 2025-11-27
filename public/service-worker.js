@@ -21,10 +21,7 @@ self.addEventListener('install', (event) => {
     caches.open(STATIC_CACHE)
       .then((cache) => {
         console.log('[SW] Precaching static assets');
-        return cache.addAll(PRECACHE_ASSETS.filter(url => {
-          // Only cache assets that exist
-          return true;
-        })).catch(err => {
+        return cache.addAll(PRECACHE_ASSETS).catch(err => {
           console.warn('[SW] Precache failed for some assets:', err);
           // Continue even if some assets fail to cache
           return Promise.resolve();
