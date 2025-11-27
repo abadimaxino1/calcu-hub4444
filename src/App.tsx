@@ -316,10 +316,25 @@ export default function App() {
   // Handle /admin, /admin/, /admin/login, /admin/dashboard, etc.
   const isAdminRoute = route === '/admin' || route.startsWith('/admin/') || route.startsWith('/admin');
 
+  // Hide body scrolling when on admin routes to prevent any main app content from showing
+  React.useEffect(() => {
+    if (isAdminRoute) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [isAdminRoute]);
+
   // For admin routes, render only the AdminShell with complete isolation
   if (isAdminRoute) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-white">
+      <div className="fixed inset-0 z-[9999] bg-white overflow-auto">
         <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
           <AdminShell />
         </React.Suspense>
