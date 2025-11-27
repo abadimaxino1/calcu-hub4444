@@ -1054,6 +1054,22 @@ function EosCalc({ lang }: { lang: Lang }) {
 // =============================================================
 // diffBetween, calculateWorkingDays are implemented in src/lib/dates
 
+// Hijri months with numbers for user clarity
+const HIJRI_MONTHS_LIST = [
+  { num: 1, en: 'Muharram', ar: 'محرم' },
+  { num: 2, en: 'Safar', ar: 'صفر' },
+  { num: 3, en: 'Rabi al-Awwal', ar: 'ربيع الأول' },
+  { num: 4, en: 'Rabi al-Thani', ar: 'ربيع الثاني' },
+  { num: 5, en: 'Jumada al-Awwal', ar: 'جمادى الأولى' },
+  { num: 6, en: 'Jumada al-Thani', ar: 'جمادى الآخرة' },
+  { num: 7, en: 'Rajab', ar: 'رجب' },
+  { num: 8, en: 'Shaban', ar: 'شعبان' },
+  { num: 9, en: 'Ramadan', ar: 'رمضان' },
+  { num: 10, en: 'Shawwal', ar: 'شوال' },
+  { num: 11, en: 'Dhu al-Qadah', ar: 'ذو القعدة' },
+  { num: 12, en: 'Dhu al-Hijjah', ar: 'ذو الحجة' },
+];
+
 function DatesCalculator({ lang }: { lang: Lang }) {
   const [calendarType, setCalendarType] = useState<'gregorian' | 'hijri'>('gregorian');
   const [start, setStart] = useState(() => new Date().toISOString().slice(0,10));
@@ -1172,7 +1188,17 @@ function DatesCalculator({ lang }: { lang: Lang }) {
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'شهر' : 'Month'}</label>
-                <input type="number" min={1} max={12} value={hijriStartM} onChange={e => setHijriStartM(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
+                <select 
+                  value={hijriStartM} 
+                  onChange={e => setHijriStartM(+e.target.value)} 
+                  className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900"
+                >
+                  {HIJRI_MONTHS_LIST.map(m => (
+                    <option key={m.num} value={m.num}>
+                      {m.num} - {lang === 'ar' ? m.ar : m.en}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'سنة' : 'Year'}</label>
@@ -1190,7 +1216,17 @@ function DatesCalculator({ lang }: { lang: Lang }) {
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'شهر' : 'Month'}</label>
-                <input type="number" min={1} max={12} value={hijriEndM} onChange={e => setHijriEndM(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
+                <select 
+                  value={hijriEndM} 
+                  onChange={e => setHijriEndM(+e.target.value)} 
+                  className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900"
+                >
+                  {HIJRI_MONTHS_LIST.map(m => (
+                    <option key={m.num} value={m.num}>
+                      {m.num} - {lang === 'ar' ? m.ar : m.en}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'سنة' : 'Year'}</label>

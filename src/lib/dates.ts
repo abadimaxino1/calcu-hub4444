@@ -234,9 +234,13 @@ export function fromHijri(year: number, month: number, day: number): Date {
 
 /**
  * Format Hijri date as string
+ * Includes month number for clarity (e.g., "15 محرم (1) 1446")
  */
-export function formatHijri(hijri: HijriDateInfo, locale: 'ar' | 'en' = 'ar'): string {
+export function formatHijri(hijri: HijriDateInfo, locale: 'ar' | 'en' = 'ar', includeMonthNumber = true): string {
   const monthName = locale === 'ar' ? hijri.monthNameAr : hijri.monthName;
+  if (includeMonthNumber) {
+    return `${hijri.day} ${monthName} (${hijri.month}) ${hijri.year}`;
+  }
   return `${hijri.day} ${monthName} ${hijri.year}`;
 }
 
