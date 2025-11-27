@@ -50,13 +50,13 @@ export function ConsentBanner({ lang }: { lang: 'ar' | 'en' }) {
         <div className="flex gap-2">
           <button
             onClick={reject}
-            className="px-4 py-2 rounded-lg border border-slate-500 hover:bg-slate-800"
+            className="min-h-[44px] min-w-[88px] px-4 py-2 rounded-lg border border-slate-500 hover:bg-slate-800 touch-manipulation"
           >
             {lang === 'ar' ? 'رفض' : 'Decline'}
           </button>
           <button
             onClick={accept}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700"
+            className="min-h-[44px] min-w-[88px] px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 touch-manipulation"
           >
             {lang === 'ar' ? 'قبول' : 'Accept'}
           </button>
