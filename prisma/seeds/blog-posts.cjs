@@ -1,4 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
+// Use the generated Prisma client from the custom output location
+const { PrismaClient } = require('../../src/generated/prisma/client');
 const prisma = new PrismaClient();
 
 const blogPosts = [
