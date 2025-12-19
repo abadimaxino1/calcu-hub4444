@@ -257,17 +257,6 @@ const blogPosts = [
     tags: "vision 2030,saudization,employment,future"
   },
   {
-    slug: "probation-period-saudi-labor-law",
-    titleAr: "فترة التجربة في نظام العمل السعودي",
-    titleEn: "Probation Period in Saudi Labor Law",
-    excerptAr: "كل ما تحتاج معرفته عن فترة التجربة: المدة، الحقوق، الإنهاء",
-    excerptEn: "Everything about probation: duration, rights, termination",
-    bodyMarkdownAr: "## فترة التجربة\n\n### المدة\nحتى 90 يوماً قابلة للتمديد لـ 180 يوماً.\n\n### الحقوق\nأجر كامل، لا مكافأة نهاية خدمة.\n\n### الإنهاء\nيمكن لأي طرف إنهاء العقد بدون سابق إنذار.",
-    bodyMarkdownEn: "## Probation Period\n\n### Duration\nUp to 90 days, extendable to 180 days.\n\n### Rights\nFull salary, no EOS benefits.\n\n### Termination\nEither party can terminate without notice.",
-    status: "PUBLISHED",
-    tags: "probation,trial period,employment,rights"
-  },
-  {
     slug: "notice-period-requirements-saudi",
     titleAr: "فترة الإشعار عند إنهاء العقد",
     titleEn: "Notice Period Requirements for Termination",
@@ -288,17 +277,6 @@ const blogPosts = [
     bodyMarkdownEn: "## Work Injuries\n\n### Coverage\nAll injuries during or because of work.\n\n### Treatment\nFree complete medical treatment.\n\n### Compensation\nFull salary during treatment + compensation.",
     status: "PUBLISHED",
     tags: "injury,compensation,insurance,safety"
-  },
-  {
-    slug: "sick-leave-entitlement-saudi",
-    titleAr: "الإجازة المرضية وحقوق العامل",
-    titleEn: "Sick Leave Entitlement and Rights",
-    excerptAr: "كيفية احتساب الإجازة المرضية والأجر المستحق",
-    excerptEn: "How to calculate sick leave and entitled pay",
-    bodyMarkdownAr: "## الإجازة المرضية\n\n### المدة\n120 يوماً في السنة.\n\n### الأجر\n- أول 30 يوم: أجر كامل\n- 60 يوم التالية: 75%\n- الباقي: بدون أجر\n\n### التقرير الطبي\nيجب تقديم تقرير معتمد.",
-    bodyMarkdownEn: "## Sick Leave\n\n### Duration\n120 days per year.\n\n### Pay\n- First 30 days: full pay\n- Next 60 days: 75%\n- Remaining: unpaid\n\n### Medical Report\nMust provide certified report.",
-    status: "PUBLISHED",
-    tags: "sick leave,medical,health,rights"
   },
   {
     slug: "annual-leave-calculation-saudi",
