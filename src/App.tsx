@@ -389,7 +389,7 @@ export default function App() {
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   className={cx(
-                    "px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl border text-xs sm:text-sm truncate",
+                    "px-2 sm:px-3 min-h-[44px] rounded-lg sm:rounded-xl border text-xs sm:text-sm truncate touch-manipulation",
                     tab === t.id ? "bg-blue-600 text-white border-blue-600" : "bg-white hover:bg-slate-50"
                   )}
                   aria-current={tab === t.id ? "page" : undefined}
@@ -405,11 +405,11 @@ export default function App() {
       {/* Service worker update banner */}
       {swUpdated && (
         <div className="max-w-5xl mx-auto px-4 py-2">
-          <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3 flex items-center justify-between">
-            <div className="text-sm">{lang === 'ar' ? 'تحديث جديد متاح' : 'A new version is available'}</div>
-            <div className="flex gap-2">
-              <button className="px-3 py-1 rounded-lg border bg-white" onClick={() => setSwUpdated(false)}>{lang === 'ar' ? 'تجاهل' : 'Dismiss'}</button>
-              <button className="px-3 py-1 rounded-lg bg-blue-600 text-white" onClick={applyUpdate}>{lang === 'ar' ? 'تحديث الآن' : 'Update now'}</button>
+          <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3 flex flex-col sm:flex-row items-center gap-3">
+            <div className="text-sm flex-1">{lang === 'ar' ? 'تحديث جديد متاح' : 'A new version is available'}</div>
+            <div className="flex gap-2 flex-shrink-0">
+              <button className="px-4 min-h-[44px] min-w-[44px] rounded-lg border bg-white touch-manipulation" onClick={() => setSwUpdated(false)}>{lang === 'ar' ? 'تجاهل' : 'Dismiss'}</button>
+              <button className="px-4 min-h-[44px] min-w-[44px] rounded-lg bg-blue-600 text-white touch-manipulation" onClick={applyUpdate}>{lang === 'ar' ? 'تحديث الآن' : 'Update now'}</button>
             </div>
           </div>
         </div>

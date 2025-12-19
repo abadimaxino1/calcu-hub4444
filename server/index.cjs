@@ -21,6 +21,8 @@ const seoRoutes = require('./routes/seo.cjs');
 const adsRoutes = require('./routes/ads.cjs');
 const systemRoutes = require('./routes/system.cjs');
 const monetizationRoutes = require('./routes/monetization.cjs');
+const cmsRoutes = require('./routes/cms.cjs');
+const adminRoutes = require('./routes/admin.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -184,6 +186,12 @@ app.use('/api/admin/monetization', monetizationRoutes);
 
 // System settings
 app.use('/api/system', systemRoutes);
+
+// CMS routes (tools, features, FAQs)
+app.use('/api/cms', cmsRoutes);
+
+// Admin routes (AI integrations, maintenance, revenue projections)
+app.use('/api/admin', adminRoutes);
 
 // Simple health check without auth
 app.get('/api/health', (req, res) => {

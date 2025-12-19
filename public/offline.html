@@ -1,26 +1,48 @@
 <!doctype html>
-<html lang="en">
+<html lang="ar" dir="rtl">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Offline — Work & Salary Hub</title>
+    <title>غير متصل | Offline — Calcu Hub</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial; background:#f8fafc; color:#0f172a; display:flex; align-items:center; justify-content:center; height:100vh; margin:0 }
-      .card { max-width:720px; background:white; padding:24px; border-radius:12px; box-shadow:0 6px 20px rgba(2,6,23,0.08); text-align:center }
-      h1 { margin:0 0 8px; font-size:1.5rem }
-      p { margin:0; line-height:1.6 }
-      .retry { margin-top:20px }
-      button { background:#2563eb; color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-size:0.95rem }
+      * { box-sizing: border-box }
+      body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background:#f8fafc; color:#0f172a; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; padding:16px }
+      .card { max-width:480px; width:100%; background:white; padding:32px; border-radius:16px; box-shadow:0 6px 20px rgba(2,6,23,0.08); text-align:center }
+      .icon { font-size:3rem; margin-bottom:16px }
+      h1 { margin:0 0 12px; font-size:1.5rem; font-weight:600 }
+      p { margin:0 0 8px; line-height:1.6; color:#475569 }
+      .secondary { opacity:0.7; font-size:0.9rem }
+      .divider { border-top: 1px solid #e2e8f0; margin: 20px 0 }
+      .en { direction: ltr; text-align: center }
+      .retry { margin-top:24px }
+      button { background:#2563eb; color:white; border:none; padding:14px 28px; border-radius:12px; cursor:pointer; font-size:1rem; font-weight:500; min-width:160px; min-height:48px; touch-action:manipulation; transition: background 0.2s }
       button:hover { background:#1d4ed8 }
+      button:active { background:#1e40af }
+      @media (prefers-color-scheme: dark) {
+        body { background:#1e293b; color:#f1f5f9 }
+        .card { background:#334155; box-shadow:0 6px 20px rgba(0,0,0,0.2) }
+        p { color:#cbd5e1 }
+        .divider { border-color:#475569 }
+      }
     </style>
   </head>
   <body>
     <div class="card">
-      <h1>📡 You're Offline</h1>
-      <p>It looks like you've lost internet connectivity. Some features may be unavailable.</p>
-      <p style="margin-top:12px;opacity:0.8;font-size:0.9rem">This page was served from the cache. Try again when you're back online.</p>
+      <div class="icon">📡</div>
+      <h1>أنت غير متصل بالإنترنت</h1>
+      <p>يبدو أنك فقدت اتصالك بالإنترنت. بعض الميزات قد لا تكون متاحة.</p>
+      <p class="secondary">هذه الصفحة محفوظة مسبقاً. حاول مرة أخرى عندما تعود للاتصال.</p>
+      
+      <div class="divider"></div>
+      
+      <div class="en">
+        <h1>You're Offline</h1>
+        <p>It looks like you've lost internet connectivity. Some features may be unavailable.</p>
+        <p class="secondary">This page was served from the cache. Try again when you're back online.</p>
+      </div>
+      
       <div class="retry">
-        <button onclick="location.reload()">↻ Retry</button>
+        <button onclick="location.reload()">↻ إعادة المحاولة | Retry</button>
       </div>
     </div>
   </body>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import SeoHead from '../../lib/seoHead';
 import { SeoFAQJsonLD } from '../../lib/seo';
@@ -8,50 +8,76 @@ interface HomePageProps {
   onNavigate: (tab: string) => void;
 }
 
-const TOOLS = [
+interface ToolCard {
+  id?: string;
+  slug: string;
+  icon: string;
+  titleAr: string;
+  titleEn: string;
+  descAr: string;
+  descEn: string;
+  color: string;
+}
+
+interface BenefitFeature {
+  id?: string;
+  icon: string;
+  titleAr: string;
+  titleEn: string;
+  descAr: string;
+  descEn: string;
+}
+
+interface FAQItem {
+  questionAr?: string;
+  questionEn?: string;
+  answerAr?: string;
+  answerEn?: string;
+  question?: string;
+  answer?: string;
+}
+
+// Default fallback data
+const DEFAULT_TOOLS: ToolCard[] = [
   {
-    id: 'pay',
+    slug: 'pay',
     icon: '💰',
     titleAr: 'حاسبة الراتب',
     titleEn: 'Salary Calculator',
     descAr: 'احسب صافي راتبك بعد التأمينات والاستقطاعات',
     descEn: 'Calculate net salary after GOSI and deductions',
     color: 'from-green-500 to-emerald-600',
-    features: ['gosi', 'allowances', 'overtime'],
   },
   {
-    id: 'eos',
+    slug: 'eos',
     icon: '🏆',
     titleAr: 'حاسبة نهاية الخدمة',
     titleEn: 'End of Service Calculator',
     descAr: 'احسب مكافأة نهاية الخدمة حسب المادة 84 و 85',
     descEn: 'Calculate EOS benefits per Articles 84 & 85',
     color: 'from-blue-500 to-indigo-600',
-    features: ['article84', 'article85', 'leave'],
   },
   {
-    id: 'work',
+    slug: 'work',
     icon: '⏰',
     titleAr: 'حاسبة ساعات العمل',
     titleEn: 'Work Hours Calculator',
     descAr: 'احسب ساعات العمل ووقت الخروج المتوقع',
     descEn: 'Calculate work hours and expected exit time',
     color: 'from-orange-500 to-amber-600',
-    features: ['clockin', 'breaks', 'overtime'],
   },
   {
-    id: 'dates',
+    slug: 'dates',
     icon: '📅',
     titleAr: 'حاسبة التواريخ',
     titleEn: 'Date Calculator',
     descAr: 'احسب الفرق بين تاريخين وأيام العمل الفعلية',
     descEn: 'Calculate date differences and working days',
     color: 'from-purple-500 to-violet-600',
-    features: ['hijri', 'working-days', 'holidays'],
   },
 ];
 
-const FEATURES = [
+const DEFAULT_FEATURES: BenefitFeature[] = [
   {
     icon: '✓',
     titleAr: 'دقة عالية',
@@ -82,7 +108,7 @@ const FEATURES = [
   },
 ];
 
-const FAQS = {
+const DEFAULT_FAQS = {
   ar: [
     { question: 'ما هي منصة Calcu-Hub؟', answer: 'Calcu-Hub مجموعة من الحاسبات المجانية صُممت لمساعدة الموظفين وأخصائي الموارد البشرية والعاملين لحسابهم الخاص في السعودية على فهم الرواتب وساعات العمل ومكافآت نهاية الخدمة بشكل أوضح.' },
     { question: 'هل النتائج ملزمة قانونيًا؟', answer: 'لا، النتائج تقريبية لغرض التثقيف والتوضيح فقط. القرارات النهائية يجب أن تُبنى على عقد العمل واللوائح الرسمية ومرجعية وزارة الموارد البشرية.' },
@@ -102,6 +128,36 @@ const FAQS = {
 export default function HomePage({ lang, onNavigate }: HomePageProps) {
   const { t } = useTranslation();
   const isRTL = lang === 'ar';
+  
+  // State for CMS content with fallback to defaults
+  const [tools, setTools] = useState<ToolCard[]>(DEFAULT_TOOLS);
+  const [features, setFeatures] = useState<BenefitFeature[]>(DEFAULT_FEATURES);
+  const [faqs, setFaqs] = useState<{ question: string; answer: string }[]>(
+    lang === 'ar' ? DEFAULT_FAQS.ar : DEFAULT_FAQS.en
+  );
+
+  // Fetch CMS content on mount - in parallel for better performance
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/cms/tools?featured=true').then(r => r.json()).catch(() => ({ tools: [] })),
+      fetch('/api/cms/features').then(r => r.json()).catch(() => ({ features: [] })),
+      fetch('/api/cms/faqs?category=global').then(r => r.json()).catch(() => ({ faqs: [] })),
+    ]).then(([toolsData, featuresData, faqsData]) => {
+      if (toolsData.tools && toolsData.tools.length > 0) {
+        setTools(toolsData.tools);
+      }
+      if (featuresData.features && featuresData.features.length > 0) {
+        setFeatures(featuresData.features);
+      }
+      if (faqsData.faqs && faqsData.faqs.length > 0) {
+        const formattedFaqs = faqsData.faqs.map((f: FAQItem) => ({
+          question: lang === 'ar' ? (f.questionAr || f.question || '') : (f.questionEn || f.question || ''),
+          answer: lang === 'ar' ? (f.answerAr || f.answer || '') : (f.answerEn || f.answer || ''),
+        }));
+        setFaqs(formattedFaqs);
+      }
+    });
+  }, [lang]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-10">
@@ -112,7 +168,7 @@ export default function HomePage({ lang, onNavigate }: HomePageProps) {
           : 'Free and accurate Saudi salary, end-of-service, work hours, and date calculators in one place. Calcu-Hub helps employees and HR professionals quickly understand GOSI, EOS benefits, working days, and more.'
         }
       />
-      <SeoFAQJsonLD faqs={FAQS[lang]} />
+      <SeoFAQJsonLD faqs={faqs} />
 
       {/* Hero Section */}
       <section className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-slate-50 text-slate-900 shadow-xl border border-slate-200">
@@ -199,10 +255,10 @@ export default function HomePage({ lang, onNavigate }: HomePageProps) {
           {lang === 'ar' ? 'الحاسبات المتاحة' : 'Available Calculators'}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
-          {TOOLS.map((tool) => (
+          {tools.map((tool) => (
             <button
-              key={tool.id}
-              onClick={() => onNavigate(tool.id)}
+              key={tool.slug}
+              onClick={() => onNavigate(tool.slug)}
               className="group flex flex-col justify-between h-full p-6 sm:p-8 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all text-start"
             >
               <div className="space-y-2">
@@ -233,8 +289,8 @@ export default function HomePage({ lang, onNavigate }: HomePageProps) {
           {lang === 'ar' ? 'لماذا تستخدم حاسباتنا؟' : 'Why Use Our Calculators?'}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-          {FEATURES.map((feature, i) => (
-            <div key={i} className="text-center flex flex-col items-center gap-3 px-4 py-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {features.map((feature, i) => (
+            <div key={feature.id || i} className="text-center flex flex-col items-center gap-3 px-4 py-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto rounded-2xl bg-slate-50 text-indigo-600 flex items-center justify-center text-2xl sm:text-3xl shadow-inner">
                 {feature.icon}
               </div>
@@ -255,7 +311,7 @@ export default function HomePage({ lang, onNavigate }: HomePageProps) {
           {lang === 'ar' ? 'الأسئلة الشائعة' : 'Frequently Asked Questions'}
         </h2>
         <div className="space-y-3 max-w-2xl mx-auto">
-          {FAQS[lang].map((faq, i) => (
+          {faqs.map((faq, i) => (
             <details key={i} className="group bg-white rounded-xl border p-4">
               <summary className="font-medium cursor-pointer list-none flex justify-between items-center">
                 <span className="flex-1 text-base text-slate-900">{faq.question}</span>

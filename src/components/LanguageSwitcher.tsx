@@ -14,7 +14,7 @@ export default function LanguageSwitcher({ variant = 'toggle', className = '' }:
     return (
       <button
         onClick={toggleLocale}
-        className={`px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 rounded ${className}`}
+        className={`min-w-[44px] min-h-[44px] px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 rounded touch-manipulation ${className}`}
         aria-label={t('common.switchLanguage')}
       >
         {locale === 'ar' ? 'EN' : 'ع'}
@@ -27,7 +27,7 @@ export default function LanguageSwitcher({ variant = 'toggle', className = '' }:
       <select
         value={locale}
         onChange={(e) => changeLocale(e.target.value as Locale)}
-        className={`px-3 py-1.5 rounded-lg border bg-white dark:bg-slate-800 text-sm ${className}`}
+        className={`min-h-[44px] px-3 py-1.5 rounded-lg border bg-white dark:bg-slate-800 text-sm touch-manipulation ${className}`}
         aria-label={t('common.language')}
         title={t('common.language')}
       >
@@ -44,7 +44,7 @@ export default function LanguageSwitcher({ variant = 'toggle', className = '' }:
   return (
     <button
       onClick={toggleLocale}
-      className={`px-3 py-1 rounded-lg border hover:bg-slate-100 dark:hover:bg-slate-700 text-sm transition-colors ${className}`}
+      className={`min-h-[44px] px-3 py-1 rounded-lg border hover:bg-slate-100 dark:hover:bg-slate-700 text-sm transition-colors touch-manipulation ${className}`}
       aria-label={t('common.switchLanguage')}
     >
       {locale === 'ar' ? 'English' : 'العربية'}
