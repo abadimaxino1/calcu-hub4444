@@ -9,6 +9,8 @@ import AdsPanel from './AdsPanel';
 import SettingsPanel from './SettingsPanel';
 import MonetizationPanel from './MonetizationPanel';
 import ToolsFeaturesPanel from './ToolsFeaturesPanel';
+import AIIntegrationsPanel from './AIIntegrationsPanel';
+import MaintenancePanel from './MaintenancePanel';
 
 // Admin user type from API
 interface AdminUser {
@@ -28,6 +30,8 @@ const TABS = [
   { key: 'tools-features', label: 'الحاسبات والمميزات', labelEn: 'Tools & Features', icon: '🧮', roles: ['SUPER_ADMIN', 'ADMIN', 'CONTENT_WRITER'] },
   { key: 'seo', label: 'SEO', labelEn: 'SEO', icon: '🔍', roles: ['SUPER_ADMIN', 'ADMIN', 'CONTENT_WRITER'] },
   { key: 'ads', label: 'الإعلانات', labelEn: 'Ads', icon: '💰', roles: ['SUPER_ADMIN', 'ADMIN', 'ADS_MANAGER'] },
+  { key: 'ai-integrations', label: 'الذكاء الاصطناعي', labelEn: 'AI Integrations', icon: '🤖', roles: ['SUPER_ADMIN', 'ADMIN', 'IT'] },
+  { key: 'maintenance', label: 'الصيانة', labelEn: 'Maintenance', icon: '🔧', roles: ['SUPER_ADMIN', 'ADMIN', 'IT'] },
   { key: 'settings', label: 'الإعدادات', labelEn: 'Settings', icon: '⚙️', roles: ['SUPER_ADMIN', 'IT'] },
   { key: 'tests', label: 'الاختبارات', labelEn: 'Tests', icon: '🧪', roles: ['SUPER_ADMIN', 'IT'] },
 ] as const;
@@ -202,6 +206,8 @@ export default function AdminShell() {
           {tab === 'tools-features' && <ToolsFeaturesPanel />}
           {tab === 'seo' && <SeoPanel />}
           {tab === 'ads' && <AdsPanel />}
+          {tab === 'ai-integrations' && <AIIntegrationsPanel />}
+          {tab === 'maintenance' && <MaintenancePanel />}
           {tab === 'settings' && <SettingsPanel />}
           {tab === 'tests' && <TestsPanel />}
         </div>

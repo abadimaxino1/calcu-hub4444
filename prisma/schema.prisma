@@ -410,3 +410,149 @@ model BenefitFeature {
   @@index([isPublished])
   @@map("benefit_features")
 }
+
+// ============================================
+// AI Integration Configuration
+// ============================================
+
+model AIIntegration {
+  id          String   @id @default(uuid())
+  provider    String   @unique // 'openai', 'gemini', 'claude', etc.
+  isEnabled   Boolean  @default(false)
+  apiKey      String?  // Encrypted
+  model       String?  // e.g., 'gpt-3.5-turbo', 'gemini-pro'
+  features    String   // JSON array: ['content_generation', 'seo_optimization', 'translation']
+  quota       Int      @default(0)  // Monthly quota
+  used        Int      @default(0)  // Used this month
+  lastReset   DateTime @default(now())
+  config      String?  // JSON for provider-specific config
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ai_integrations")
+}
+
+model AIGeneratedContent {
+  id          String   @id @default(uuid())
+  contentType String   // 'blog_post', 'seo_meta', 'faq', 'description'
+  targetId    String?  // ID of related content (blog post, page, etc.)
+  prompt      String
+  response    String
+  provider    String   // 'openai', 'gemini', etc.
+  model       String?
+  tokensUsed  Int      @default(0)
+  isApproved  Boolean  @default(false)
+  approvedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([contentType])
+  @@index([isApproved])
+  @@index([createdAt])
+  @@map("ai_generated_content")
+}
+
+// ============================================
+// Revenue Projection & Goals
+// ============================================
+
+model RevenueGoal {
+  id              String   @id @default(uuid())
+  year            Int
+  month           Int
+  targetRevenue   Float    // Target revenue for the month
+  targetPageviews Int      // Target pageviews
+  targetRPM       Float    // Target RPM (Revenue per 1000 impressions)
+  actualRevenue   Float    @default(0)
+  actualPageviews Int      @default(0)
+  actualRPM       Float    @default(0)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([year, month])
+  @@index([year, month])
+  @@map("revenue_goals")
+}
+
+model RevenueProjection {
+  id                String   @id @default(uuid())
+  projectionDate    DateTime @unique
+  projectedRevenue  Float
+  confidence        String   @default("MEDIUM") // LOW, MEDIUM, HIGH
+  basedOnDays       Int      // Number of days of actual data used
+  growthRate        Float    // Percentage growth rate
+  seasonalFactor    Float    @default(1.0)
+  assumptions       String   // JSON: RPM, traffic trends, etc.
+  actualRevenue     Float?   // Filled in once the date passes
+  accuracy          Float?   // Calculated after actual data is available
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([projectionDate])
+  @@map("revenue_projections")
+}
+
+// ============================================
+// Maintenance & System Health
+// ============================================
+
+model MaintenanceMode {
+  id          String    @id @default(uuid())
+  isEnabled   Boolean   @default(false)
+  title       String    @default("الموقع قيد الصيانة / Site Under Maintenance")
+  messageAr   String    @default("نعتذر عن الإزعاج. الموقع قيد الصيانة حالياً وسيعود قريباً.")
+  messageEn   String    @default("Sorry for the inconvenience. The site is currently under maintenance and will be back soon.")
+  startTime   DateTime?
+  endTime     DateTime?
+  allowedIPs  String?   // Comma-separated IPs that can access during maintenance
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("maintenance_mode")
+}
+
+model SystemHealth {
+  id              String   @id @default(uuid())
+  checkTime       DateTime @unique
+  cpuUsage        Float?
+  memoryUsage     Float?
+  diskUsage       Float?
+  responseTime    Int?     // Average response time in ms
+  errorRate       Float?   // Percentage of errors
+  activeUsers     Int?
+  databaseSize    Float?   // Size in MB
+  cacheHitRate    Float?
+  status          String   @default("HEALTHY") // HEALTHY, WARNING, CRITICAL
+  issues          String?  // JSON array of detected issues
+  createdAt       DateTime @default(now())
+
+  @@index([checkTime])
+  @@index([status])
+  @@map("system_health")
+}
+
+// ============================================
+// Page Editor Tracking
+// ============================================
+
+model PageEdit {
+  id          String   @id @default(uuid())
+  pageSlug    String
+  pagePath    String
+  sectionId   String?  // ID of the section being edited
+  editType    String   // 'content', 'seo', 'layout', 'settings'
+  beforeData  String?  // JSON snapshot before edit
+  afterData   String?  // JSON snapshot after edit
+  editorId    String
+  editorName  String
+  isPublished Boolean  @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([pageSlug])
+  @@index([editorId])
+  @@index([createdAt])
+  @@map("page_edits")
+}
