@@ -702,14 +702,29 @@ function EditorModal({
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">المحتوى (عربي)</label>
-                <textarea
-                  value={formData.contentAr}
-                  onChange={(e) => setFormData({ ...formData, contentAr: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg h-40"
-                  required
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">المحتوى (عربي) - Markdown</label>
+                  <textarea
+                    value={formData.bodyMarkdownAr || formData.contentAr || ''}
+                    onChange={(e) => setFormData({ ...formData, bodyMarkdownAr: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg h-40 font-mono text-sm"
+                    placeholder="يمكنك استخدام Markdown للتنسيق..."
+                    required
+                  />
+                  <p className="text-xs text-slate-500 mt-1">يدعم Markdown: ## عنوان، * قائمة، [نص](رابط)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">المحتوى (إنجليزي) - Markdown</label>
+                  <textarea
+                    value={formData.bodyMarkdownEn || formData.contentEn || ''}
+                    onChange={(e) => setFormData({ ...formData, bodyMarkdownEn: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg h-40 font-mono text-sm"
+                    placeholder="You can use Markdown for formatting..."
+                    dir="ltr"
+                  />
+                  <p className="text-xs text-slate-500 mt-1" dir="ltr">Supports Markdown: ## heading, * list, [text](url)</p>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">الحالة</label>
