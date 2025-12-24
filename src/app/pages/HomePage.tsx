@@ -138,10 +138,13 @@ export default function HomePage({ lang, onNavigate }: HomePageProps) {
 
   // Fetch CMS content on mount - in parallel for better performance
   useEffect(() => {
+    setFaqs(lang === 'ar' ? DEFAULT_FAQS.ar : DEFAULT_FAQS.en);
+
+    const headers = { 'Accept-Language': lang };
     Promise.all([
-      fetch('/api/cms/tools?featured=true').then(r => r.json()).catch(() => ({ tools: [] })),
-      fetch('/api/cms/features').then(r => r.json()).catch(() => ({ features: [] })),
-      fetch('/api/cms/faqs?category=global').then(r => r.json()).catch(() => ({ faqs: [] })),
+      fetch('/api/content/tools?featured=true', { headers }).then(r => r.json()).catch(() => ({ tools: [] })),
+      fetch('/api/content/features', { headers }).then(r => r.json()).catch(() => ({ features: [] })),
+      fetch('/api/content/faqs?category=global', { headers }).then(r => r.json()).catch(() => ({ faqs: [] })),
     ]).then(([toolsData, featuresData, faqsData]) => {
       if (toolsData.tools && toolsData.tools.length > 0) {
         setTools(toolsData.tools);
@@ -151,8 +154,12 @@ export default function HomePage({ lang, onNavigate }: HomePageProps) {
       }
       if (faqsData.faqs && faqsData.faqs.length > 0) {
         const formattedFaqs = faqsData.faqs.map((f: FAQItem) => ({
-          question: lang === 'ar' ? (f.questionAr || f.question || '') : (f.questionEn || f.question || ''),
-          answer: lang === 'ar' ? (f.answerAr || f.answer || '') : (f.answerEn || f.answer || ''),
+          question: (lang === 'ar' 
+            ? (f.questionAr || f.question || f.questionEn) 
+            : (f.questionEn || f.question || f.questionAr)) || '',
+          answer: (lang === 'ar' 
+            ? (f.answerAr || f.answer || f.answerEn) 
+            : (f.answerEn || f.answer || f.answerAr)) || '',
         }));
         setFaqs(formattedFaqs);
       }
@@ -264,10 +271,18 @@ export default function HomePage({ lang, onNavigate }: HomePageProps) {
               <div className="space-y-2">
                 <div className="text-3xl sm:text-4xl mb-1 filter drop-shadow-sm">{tool.icon}</div>
                 <h3 className="text-lg sm:text-xl font-bold leading-snug text-slate-900 group-hover:text-indigo-700 transition-colors">
-                  {lang === 'ar' ? tool.titleAr : tool.titleEn}
+                  {(
+                    lang === 'ar'
+                      ? (tool.titleAr || tool.titleEn)
+                      : (tool.titleEn || tool.titleAr)
+                  ) || (lang === 'ar' ? 'بدون عنوان' : 'Untitled')}
                 </h3>
                 <p className="text-sm sm:text-base text-slate-700 leading-relaxed font-medium">
-                  {lang === 'ar' ? tool.descAr : tool.descEn}
+                  {(
+                    lang === 'ar'
+                      ? (tool.descAr || tool.descEn)
+                      : (tool.descEn || tool.descAr)
+                  ) || ''}
                 </p>
               </div>
               <div className="mt-4 flex justify-end">
@@ -295,10 +310,18 @@ export default function HomePage({ lang, onNavigate }: HomePageProps) {
                 {feature.icon}
               </div>
               <h3 className="font-bold text-base sm:text-lg text-slate-900">
-                {lang === 'ar' ? feature.titleAr : feature.titleEn}
+                {(
+                  lang === 'ar'
+                    ? (feature.titleAr || feature.titleEn)
+                    : (feature.titleEn || feature.titleAr)
+                ) || (lang === 'ar' ? 'بدون عنوان' : 'Untitled')}
               </h3>
               <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-medium">
-                {lang === 'ar' ? feature.descAr : feature.descEn}
+                {(
+                  lang === 'ar'
+                    ? (feature.descAr || feature.descEn)
+                    : (feature.descEn || feature.descAr)
+                ) || ''}
               </p>
             </div>
           ))}

@@ -9,6 +9,10 @@ interface BlogPost {
   excerptAr: string;
   excerptEn: string;
   publishedAt: string | null;
+
+  // legacy fields (existing DB)
+  title?: string;
+  excerpt?: string;
 }
 
 // Fallback articles for when CMS is empty
@@ -25,7 +29,7 @@ const DEFAULT_ARTICLES = [
 ];
 
 export default function BlogPage({ lang }: { lang: 'ar'|'en' }) {
-  const [articles, setArticles] = useState<BlogPost[]>(DEFAULT_ARTICLES);
+  const [articles, setArticles] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
 
   const content = {
@@ -45,18 +49,21 @@ export default function BlogPage({ lang }: { lang: 'ar'|'en' }) {
 
   // Fetch blog posts from CMS
   useEffect(() => {
-    fetch('/api/content/blog?includeUnpublished=false')
+    fetch('/api/content/blog?includeUnpublished=false&limit=30&page=1', {
+      headers: { 'Accept-Language': lang }
+    })
       .then(r => r.json())
       .then(data => {
-        if (data.posts && data.posts.length > 0) {
-          setArticles(data.posts);
-        }
+        const posts = Array.isArray(data?.posts) ? data.posts : [];
+        setArticles(posts);
         setLoading(false);
       })
       .catch(() => {
+        // optional offline fallback
+        setArticles(DEFAULT_ARTICLES as any);
         setLoading(false);
       });
-  }, []);
+  }, [lang]);
 
   const c = content[lang];
 
@@ -81,8 +88,15 @@ export default function BlogPage({ lang }: { lang: 'ar'|'en' }) {
         ) : (
           <div className="grid gap-4 sm:gap-6">
             {articles.map(a => {
-              const title = lang === 'ar' ? a.titleAr : a.titleEn;
-              const excerpt = lang === 'ar' ? a.excerptAr : a.excerptEn;
+              // Strict fallback: use bilingual field, then legacy field, then other language, then default
+              const title = (lang === 'ar' 
+                ? (a.titleAr || (a as any).title || a.titleEn) 
+                : (a.titleEn || (a as any).title || a.titleAr)) || (lang === 'ar' ? 'بدون عنوان' : 'Untitled');
+              
+              const excerpt = (lang === 'ar' 
+                ? (a.excerptAr || (a as any).excerpt || a.excerptEn) 
+                : (a.excerptEn || (a as any).excerpt || a.excerptAr)) || '';
+              
               const slug = a.slug || a.id;
               
               return (

@@ -54,21 +54,23 @@ export default function FAQPage({ lang }: { lang: 'ar' | 'en' }) {
     }
   };
 
-  const [faqs, setFaqs] = useState<{ question: string; answer: string; category?: string }[]>(
-    DEFAULT_FAQS[lang]
-  );
+  const [faqs, setFaqs] = useState<{ question: string; answer: string; category?: string }[]>([]);
   const [groupedFaqs, setGroupedFaqs] = useState<Record<string, { question: string; answer: string }[]>>({});
+  const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const c = content[lang];
 
   // Fetch FAQs from CMS API
   useEffect(() => {
+    setLoading(true);
     // Fetch all categories
     const categories = ['global', 'pay', 'eos', 'work', 'dates'];
     
     Promise.all(
       categories.map(cat =>
-        fetch(`/api/cms/faqs?category=${cat}`)
+        fetch(`/api/content/faqs?category=${cat}`, {
+          headers: { 'Accept-Language': lang }
+        })
           .then(r => r.json())
           .then(data => ({
             category: cat,
@@ -82,11 +84,18 @@ export default function FAQPage({ lang }: { lang: 'ar' | 'en' }) {
 
       results.forEach(({ category, faqs: catFaqs }) => {
         if (catFaqs.length > 0) {
-          const formattedFaqs = catFaqs.map((f: FAQItem) => ({
-            question: lang === 'ar' ? (f.questionAr || f.question || '') : (f.questionEn || f.question || ''),
-            answer: lang === 'ar' ? (f.answerAr || f.answer || '') : (f.answerEn || f.answer || ''),
-            category,
-          }));
+          const formattedFaqs = catFaqs.map((f: FAQItem) => {
+            // Strict fallback chain
+            const question = (lang === 'ar' 
+              ? (f.questionAr || f.question || f.questionEn) 
+              : (f.questionEn || f.question || f.questionAr)) || (lang === 'ar' ? 'بدون سؤال' : 'Untitled Question');
+            
+            const answer = (lang === 'ar' 
+              ? (f.answerAr || f.answer || f.answerEn) 
+              : (f.answerEn || f.answer || f.answerAr)) || '';
+
+            return { question, answer, category };
+          });
           allFaqs.push(...formattedFaqs);
           grouped[category] = formattedFaqs;
         }
@@ -95,7 +104,13 @@ export default function FAQPage({ lang }: { lang: 'ar' | 'en' }) {
       if (allFaqs.length > 0) {
         setFaqs(allFaqs);
         setGroupedFaqs(grouped);
+      } else {
+        // Use default fallback ONLY if CMS is empty
+        setFaqs(DEFAULT_FAQS[lang]);
+        setGroupedFaqs({});
+        setOpenId(null);
       }
+      setLoading(false);
     });
   }, [lang]);
 
@@ -107,8 +122,11 @@ export default function FAQPage({ lang }: { lang: 'ar' | 'en' }) {
       <section className="space-y-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">{c.h1}</h1>
 
-        {/* Display grouped FAQs if available */}
-        {Object.keys(groupedFaqs).length > 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        ) : Object.keys(groupedFaqs).length > 0 ? (
           Object.entries(groupedFaqs).map(([category, categoryFaqs]) => (
             <div key={category} className="space-y-3">
               <h2 className="text-lg font-semibold text-slate-700 border-b pb-2">

@@ -72,8 +72,14 @@ export default function ArticlePage({ lang }: { lang: 'ar'|'en' }) {
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
+    setLoading(true);
+    setNotFound(false);
+    setArticle(null);
+
     // Try to fetch from CMS
-    fetch(`/api/content/blog/${slug}`)
+    fetch(`/api/content/blog/${slug}`, {
+      headers: { 'Accept-Language': lang }
+    })
       .then(r => r.json())
       .then(data => {
         if (data.post) {
@@ -103,7 +109,7 @@ export default function ArticlePage({ lang }: { lang: 'ar'|'en' }) {
         }
         setLoading(false);
       });
-  }, [slug]);
+  }, [slug, lang]);
 
   // Helper to render markdown-like content
   const renderContent = (content: string) => {
@@ -116,7 +122,7 @@ export default function ArticlePage({ lang }: { lang: 'ar'|'en' }) {
         return <br key={i} />;
       } else {
         // Handle links in markdown format [text](url)
-        const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+        const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/;
         if (linkRegex.test(line)) {
           const parts = line.split(linkRegex);
           return (
@@ -146,16 +152,26 @@ export default function ArticlePage({ lang }: { lang: 'ar'|'en' }) {
   };
   
   const title = article 
-    ? (lang === 'ar' ? (article.titleAr || article.title) : (article.titleEn || article.title)) || ''
+    ? (lang === 'ar' 
+        ? (article.titleAr || article.title || article.titleEn) 
+        : (article.titleEn || article.title || article.titleAr)) || (lang === 'ar' ? 'بدون عنوان' : 'Untitled')
     : (lang === 'ar' ? 'مقال غير موجود' : 'Article Not Found');
-    
-  const meta = article
-    ? (lang === 'ar' ? (article.excerptAr || article.excerpt) : (article.excerptEn || article.excerpt)) || ''
-    : (lang === 'ar' ? 'المقال المطلوب غير متاح' : 'The requested article is not available');
-    
-  const content = article
-    ? (lang === 'ar' ? (article.bodyMarkdownAr || article.bodyMarkdown) : (article.bodyMarkdownEn || article.bodyMarkdown)) || ''
+
+  const bodyMarkdown = article
+    ? (lang === 'ar'
+        ? (article.bodyMarkdownAr || article.bodyMarkdown || article.bodyMarkdownEn)
+        : (article.bodyMarkdownEn || article.bodyMarkdown || article.bodyMarkdownAr)) || ''
     : '';
+
+  const excerpt = article
+    ? (lang === 'ar'
+        ? (article.excerptAr || article.excerpt || article.excerptEn)
+        : (article.excerptEn || article.excerpt || article.excerptAr)) || ''
+    : '';
+    
+  const meta = excerpt || (lang === 'ar' ? 'المقال المطلوب غير متاح' : 'The requested article is not available');
+    
+  const content = bodyMarkdown;
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">

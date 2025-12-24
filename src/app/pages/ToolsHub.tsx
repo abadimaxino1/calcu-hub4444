@@ -70,7 +70,9 @@ export default function ToolsHub({ lang }: { lang: 'ar' | 'en' }) {
 
   // Fetch tools from CMS
   useEffect(() => {
-    fetch('/api/cms/tools?tools=true')
+    fetch('/api/content/tools?tools=true', {
+      headers: { 'Accept-Language': lang }
+    })
       .then(r => r.json())
       .then(data => {
         if (data.tools && data.tools.length > 0) {
@@ -81,7 +83,7 @@ export default function ToolsHub({ lang }: { lang: 'ar' | 'en' }) {
       .catch(() => {
         setLoading(false);
       });
-  }, []);
+  }, [lang]);
 
   const upcomingTools = [
     {
@@ -126,8 +128,6 @@ export default function ToolsHub({ lang }: { lang: 'ar' | 'en' }) {
           /* Main Tools Grid */
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             {tools.map((tool) => {
-              const title = lang === 'ar' ? tool.titleAr : tool.titleEn;
-              const description = lang === 'ar' ? tool.descAr : tool.descEn;
               const path = `/calc?tab=${tool.slug}`;
               
               return (
@@ -141,10 +141,18 @@ export default function ToolsHub({ lang }: { lang: 'ar' | 'en' }) {
                     <span className="text-2xl sm:text-3xl">{tool.icon}</span>
                     <div className="flex-1 space-y-2">
                       <h2 className="font-semibold text-base sm:text-lg text-slate-900 group-hover:text-blue-600 transition-colors">
-                        {title}
+                        {(
+                          lang === 'ar'
+                            ? (tool.titleAr || tool.titleEn)
+                            : (tool.titleEn || tool.titleAr)
+                        ) || (lang === 'ar' ? 'بدون عنوان' : 'Untitled')}
                       </h2>
                       <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
-                        {description}
+                        {(
+                          lang === 'ar'
+                            ? (tool.descAr || tool.descEn)
+                            : (tool.descEn || tool.descAr)
+                        ) || ''}
                       </p>
                     </div>
                   </div>

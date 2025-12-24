@@ -35,14 +35,32 @@ export default function CalculatorFAQ({
 
   useEffect(() => {
     async function fetchFAQs() {
+      setLoading(true);
+      setFaqs([]);
+      setExpanded(new Set());
       try {
-        const res = await fetch(`/api/content/faqs?category=${category}&locale=${locale}`);
+        const res = await fetch(`/api/content/faqs?category=${category}&locale=${locale}`, {
+          headers: { 'Accept-Language': locale }
+        });
         if (res.ok) {
           const data = await res.json();
-          setFaqs(data.faqs || []);
+          const rawFaqs = data.faqs || [];
+          
+          // Strict fallback chain
+          const formattedFaqs = rawFaqs.map((f: any) => ({
+            ...f,
+            question: (locale === 'ar' 
+              ? (f.questionAr || f.question || f.questionEn) 
+              : (f.questionEn || f.question || f.questionAr)) || (locale === 'ar' ? 'بدون سؤال' : 'Untitled Question'),
+            answer: (locale === 'ar' 
+              ? (f.answerAr || f.answer || f.answerEn) 
+              : (f.answerEn || f.answer || f.answerAr)) || ''
+          }));
+
+          setFaqs(formattedFaqs);
           // Expand first FAQ if enabled
-          if (expandFirst && data.faqs?.length > 0) {
-            setExpanded(new Set([data.faqs[0].id]));
+          if (expandFirst && formattedFaqs.length > 0) {
+            setExpanded(new Set([formattedFaqs[0].id]));
           }
         }
       } catch (error) {
