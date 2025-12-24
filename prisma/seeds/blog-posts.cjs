@@ -1,6 +1,11 @@
-// Use the generated Prisma client from the custom output location
-const { PrismaClient } = require('../../src/generated/prisma/client');
-const prisma = new PrismaClient();
+const path = require('path');
+const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
+
+const dbPath = path.join(__dirname, '..', '..', 'dev.db');
+const db = new Database(dbPath);
+db.pragma('foreign_keys = ON');
 
 const blogPosts = [
   {
@@ -324,34 +329,113 @@ const blogPosts = [
   }
 ];
 
-async function seedBlogPosts() {
-  console.log('Seeding blog posts...');
-  
-  for (const post of blogPosts) {
-    await prisma.blogPost.upsert({
-      where: { slug: post.slug },
-      update: post,
-      create: {
-        ...post,
-        publishedAt: new Date(),
-        viewCount: Math.floor(Math.random() * 1000), // Random views for demo
-        authorId: null, // Will be filled by admin user
-      },
-    });
-  }
-  
-  console.log(`✓ Seeded ${blogPosts.length} blog posts`);
+function ensureAuthor() {
+  const email = 'admin@calcuhub.com';
+  const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (existing) return existing;
+
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  const hashedPassword = bcrypt.hashSync('ChangeThisPassword123!', 12);
+  db.prepare(`
+    INSERT INTO users (id, email, name, hashedPassword, role, isActive, totpSecret, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, email, 'Admin', hashedPassword, 'SUPER_ADMIN', 1, null, now, now);
+
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 }
 
-module.exports = { seedBlogPosts };
+function upsertBlogPost(authorId, post) {
+  const now = new Date().toISOString();
+  const isPublished = post.status === 'PUBLISHED';
+  const publishedAt = isPublished ? now : null;
 
-if (require.main === module) {
-  seedBlogPosts()
-    .catch((e) => {
-      console.error(e);
-      process.exit(1);
-    })
-    .finally(async () => {
-      await prisma.$disconnect();
-    });
+  // Backward-compat legacy fields
+  const legacyTitle = post.titleAr || post.titleEn || '';
+  const legacyExcerpt = post.excerptAr || post.excerptEn || '';
+  const legacyBody = post.bodyMarkdownAr || post.bodyMarkdownEn || '';
+
+  const id = uuidv4();
+
+  db.prepare(`
+    INSERT INTO blog_posts (
+      id,
+      slug,
+      titleAr,
+      titleEn,
+      excerptAr,
+      excerptEn,
+      bodyMarkdownAr,
+      bodyMarkdownEn,
+      heroImageUrl,
+      tags,
+      authorId,
+      isPublished,
+      publishedAt,
+      viewCount,
+      createdAt,
+      updatedAt,
+      title,
+      excerpt,
+      bodyMarkdown
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(slug) DO UPDATE SET
+      titleAr = excluded.titleAr,
+      titleEn = excluded.titleEn,
+      excerptAr = excluded.excerptAr,
+      excerptEn = excluded.excerptEn,
+      bodyMarkdownAr = excluded.bodyMarkdownAr,
+      bodyMarkdownEn = excluded.bodyMarkdownEn,
+      heroImageUrl = excluded.heroImageUrl,
+      tags = excluded.tags,
+      authorId = excluded.authorId,
+      isPublished = excluded.isPublished,
+      publishedAt = excluded.publishedAt,
+      updatedAt = excluded.updatedAt,
+      title = excluded.title,
+      excerpt = excluded.excerpt,
+      bodyMarkdown = excluded.bodyMarkdown
+  `).run(
+    id,
+    post.slug,
+    post.titleAr || '',
+    post.titleEn || '',
+    post.excerptAr || '',
+    post.excerptEn || '',
+    post.bodyMarkdownAr || '',
+    post.bodyMarkdownEn || '',
+    post.heroImageUrl || null,
+    post.tags || '',
+    authorId,
+    isPublished ? 1 : 0,
+    publishedAt,
+    0,
+    now,
+    now,
+    legacyTitle,
+    legacyExcerpt,
+    legacyBody
+  );
+}
+
+function main() {
+  const author = ensureAuthor();
+  let insertedOrUpdated = 0;
+  const tx = db.transaction(() => {
+    for (const post of blogPosts) {
+      upsertBlogPost(author.id, post);
+      insertedOrUpdated += 1;
+    }
+  });
+
+  tx();
+  console.log(`Seeded blog posts: ${insertedOrUpdated}`);
+  console.log(`Author: ${author.email}`);
+}
+
+try {
+  main();
+} finally {
+  db.close();
 }
