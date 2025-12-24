@@ -6,7 +6,7 @@ const bcrypt = require('bcryptjs');
 const file = path.join(__dirname, '..', 'server', 'admin-users.json');
 const now = Date.now();
 const seed = {
-  admin: { passwordHash: bcrypt.hashSync('ChangeMe!123', 10), createdAt: now, roles: ['Admin'] },
+  admin: { passwordHash: bcrypt.hashSync('ChangeThisPassword123!', 10), createdAt: now, roles: ['Admin'] },
   supervisor: { passwordHash: bcrypt.hashSync('Supervisor1!', 10), createdAt: now, roles: ['Supervisor'] },
   analyst: { passwordHash: bcrypt.hashSync('Analyst1!', 10), createdAt: now, roles: ['Analyst'] },
   it: { passwordHash: bcrypt.hashSync('Infra1!', 10), createdAt: now, roles: ['IT'] },
