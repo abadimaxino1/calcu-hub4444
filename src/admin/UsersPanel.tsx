@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { AdminDataTable, ColumnDef } from '../components/AdminDataTable';
 
 // Role definitions with Arabic and English names
 const ROLES = [
@@ -50,11 +51,22 @@ interface User {
 
 export default function UsersPanel() {
   const [users, setUsers] = useState<User[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showAddUser, setShowAddUser] = useState(false);
   const [showEditUser, setShowEditUser] = useState<User | null>(null);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
   const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; userId: string; userName: string }>({ show: false, userId: '', userName: '' });
+
+  // Query params state
+  const [params, setParams] = useState({
+    page: 1,
+    limit: 10,
+    search: '',
+    sortBy: 'createdAt',
+    sortOrder: 'desc' as 'asc' | 'desc',
+    includeDeleted: false
+  });
 
   // New user form state
   const [newUser, setNewUser] = useState({
@@ -70,44 +82,68 @@ export default function UsersPanel() {
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
   };
 
+  useEffect(() => {
+    fetchUsers();
+  }, [params]);
+
   const fetchUsers = () => {
     setLoading(true);
-    fetch('/api/admin/users', { credentials: 'include' })
+    const query = new URLSearchParams({
+      page: String(params.page),
+      limit: String(params.limit),
+      search: params.search,
+      sortBy: params.sortBy,
+      sortOrder: params.sortOrder,
+      includeDeleted: String(params.includeDeleted)
+    }).toString();
+
+    fetch(`/api/admin/users?${query}`, { credentials: 'include' })
       .then(r => r.json())
       .then(j => {
         if (j && j.ok) {
           setUsers(j.users || []);
+          setTotalItems(j.pagination?.total || 0);
         } else {
-          // If API fails, show demo users for development
-          setUsers([
-            {
-              id: '1',
-              email: 'admin@calcuhub.com',
-              name: 'المدير الرئيسي',
-              role: 'SUPER_ADMIN',
-              isActive: true,
-              createdAt: new Date().toISOString(),
-              lastLogin: new Date().toISOString(),
-            },
-          ]);
+          setUsers([]);
+          setTotalItems(0);
         }
       })
       .catch(() => {
-        // Show demo users if fetch fails
-        setUsers([
-          {
-            id: '1',
-            email: 'admin@calcuhub.com',
-            name: 'المدير الرئيسي',
-            role: 'SUPER_ADMIN',
-            isActive: true,
-            createdAt: new Date().toISOString(),
-            lastLogin: new Date().toISOString(),
-          },
-        ]);
+        setUsers([]);
+        setTotalItems(0);
       })
       .finally(() => setLoading(false));
   };
+
+  const handleParamsChange = (newParams: any) => {
+    setParams(prev => ({ ...prev, ...newParams }));
+  };
+
+  const userColumns: ColumnDef<User>[] = useMemo(() => [
+    { key: 'name', header: 'المستخدم', sortable: true, render: (val, item) => (
+      <div>
+        <div className="font-medium text-slate-900">{val}</div>
+        <div className="text-sm text-slate-500" dir="ltr">{item.email}</div>
+      </div>
+    )},
+    { key: 'role', header: 'الصلاحية', sortable: true, render: (val) => {
+      const roleInfo = ROLES.find(r => r.key === val) || ROLES[ROLES.length - 1];
+      return (
+        <span className={`px-2 py-1 rounded text-xs font-medium ${roleInfo.color}`}>
+          {roleInfo.ar}
+        </span>
+      );
+    }},
+    { key: 'isActive', header: 'الحالة', sortable: true, render: (val) => (
+      <span className={`px-2 py-1 rounded text-xs ${val ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+        {val ? 'نشط' : 'غير نشط'}
+      </span>
+    )},
+    { key: 'lastLogin', header: 'آخر دخول', sortable: true, render: (val) => val 
+      ? new Date(val).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : 'لم يسجل الدخول بعد'
+    },
+  ], []);
 
   useEffect(() => {
     fetchUsers();
@@ -420,127 +456,49 @@ export default function UsersPanel() {
           <h2 className="text-xl font-semibold text-slate-900">إدارة المستخدمين</h2>
           <p className="text-sm text-slate-600">إدارة المستخدمين والصلاحيات</p>
         </div>
-        <button
-          onClick={() => setShowAddUser(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
-        >
-          <span>+</span>
-          <span>إضافة مستخدم</span>
-        </button>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={params.includeDeleted}
+              onChange={(e) => handleParamsChange({ includeDeleted: e.target.checked, page: 1 })}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            عرض المحذوفات
+          </label>
+          <button
+            onClick={() => setShowAddUser(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+          >
+            <span>+</span>
+            <span>إضافة مستخدم</span>
+          </button>
+        </div>
       </div>
 
       {/* Roles Overview */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border">
-        <h3 className="text-lg font-semibold mb-4">نظرة عامة على الأدوار</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {ROLES.map(role => {
-            const userCount = users.filter(u => u.role === role.key).length;
-            return (
-              <div key={role.key} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${role.color}`}>
-                    {role.ar}
-                  </span>
-                  <span className="text-2xl font-bold text-slate-900">{userCount}</span>
-                </div>
-                <p className="text-xs text-slate-500">{role.en}</p>
-                <div className="mt-2 text-xs text-slate-400">
-                  {(ROLE_PERMISSIONS[role.key] || []).length} صلاحية
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* ... existing roles overview ... */}
 
       {/* Users Table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="p-4 border-b">
-          <h3 className="text-lg font-semibold">قائمة المستخدمين ({users.length})</h3>
+          <h3 className="text-lg font-semibold">قائمة المستخدمين ({totalItems})</h3>
         </div>
         
-        {users.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">
-            <div className="text-4xl mb-2">👥</div>
-            <p>لا يوجد مستخدمين حالياً</p>
-            <p className="text-sm mt-1">اضغط على "إضافة مستخدم" لإضافة مستخدم جديد</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-700">المستخدم</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-700">الصلاحية</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-700">الحالة</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-700">آخر دخول</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-700">الإجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {users.map(user => {
-                  const roleInfo = getRoleInfo(user.role);
-                  return (
-                    <tr key={user.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">
-                        <div>
-                          <div className="font-medium text-slate-900">{user.name}</div>
-                          <div className="text-sm text-slate-500" dir="ltr">{user.email}</div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${roleInfo.color}`}>
-                          {roleInfo.ar}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          user.isActive 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {user.isActive ? 'نشط' : 'غير نشط'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
-                        {user.lastLogin 
-                          ? new Date(user.lastLogin).toLocaleDateString('ar-SA', { 
-                              year: 'numeric', 
-                              month: 'short', 
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })
-                          : 'لم يسجل الدخول بعد'
-                        }
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setShowEditUser(user)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                            title="تعديل"
-                          >
-                            ✏️
-                          </button>
-                          {user.role !== 'SUPER_ADMIN' && (
-                            <button
-                              onClick={() => setDeleteConfirm({ show: true, userId: user.id, userName: user.name })}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                              title="حذف"
-                            >
-                              🗑️
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <AdminDataTable
+          columns={userColumns}
+          data={users}
+          serverSide
+          totalItems={totalItems}
+          onParamsChange={handleParamsChange}
+          onRowAction={(action, item) => {
+            if (action === 'edit') setShowEditUser(item);
+            if (action === 'delete' && item.role !== 'SUPER_ADMIN') {
+              setDeleteConfirm({ show: true, userId: item.id, userName: item.name });
+            }
+          }}
+          keyField="id"
+        />
       </div>
 
       {/* Permissions Matrix */}

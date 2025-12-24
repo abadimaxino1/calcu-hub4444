@@ -1,28 +1,25 @@
-import React, { useEffect, useState } from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from 'chart.js';
-import { Line, Bar } from 'react-chartjs-2';
+import React, { useEffect, useState, Suspense } from 'react';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
+// Lazy load charts
+const LazyLine = React.lazy(() => import('../components/AdminCharts').then(m => ({ default: m.Line })));
+const LazyBar = React.lazy(() => import('../components/AdminCharts').then(m => ({ default: m.Bar })));
+
+const ChartLoader = () => (
+  <div className="w-full h-full flex items-center justify-center bg-gray-50 rounded-lg text-gray-400 text-sm animate-pulse">
+    Loading Chart...
+  </div>
+);
+
+const Line = (props: any) => (
+  <Suspense fallback={<ChartLoader />}>
+    <LazyLine {...props} />
+  </Suspense>
+);
+
+const Bar = (props: any) => (
+  <Suspense fallback={<ChartLoader />}>
+    <LazyBar {...props} />
+  </Suspense>
 );
 
 interface AdSlot {
@@ -49,6 +46,7 @@ interface RevenueData {
 
 export default function AdsPanel() {
   const [adSlots, setAdSlots] = useState<AdSlot[]>([]);
+  const [totalSlots, setTotalSlots] = useState(0);
   const [revenue, setRevenue] = useState<RevenueData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -56,15 +54,34 @@ export default function AdsPanel() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'slots' | 'revenue' | 'forecast'>('slots');
 
+  // Query params for slots
+  const [params, setParams] = useState({
+    page: 1,
+    limit: 12,
+    search: '',
+    sortBy: 'createdAt',
+    sortOrder: 'desc' as 'asc' | 'desc',
+    includeDeleted: false
+  });
+
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [params]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
+      const query = new URLSearchParams({
+        page: String(params.page),
+        limit: String(params.limit),
+        search: params.search,
+        sortBy: params.sortBy,
+        sortOrder: params.sortOrder,
+        includeDeleted: String(params.includeDeleted)
+      }).toString();
+
       const [slotsRes, revenueRes] = await Promise.all([
-        fetch('/api/ads/slots', { credentials: 'include' }),
+        fetch(`/api/ads/slots?${query}`, { credentials: 'include' }),
         fetch('/api/ads/revenue', { credentials: 'include' }),
       ]);
 
@@ -73,6 +90,7 @@ export default function AdsPanel() {
 
       if (slotsRes.ok) {
         setAdSlots(slotsData.slots || []);
+        setTotalSlots(slotsData.pagination?.total || 0);
       }
       if (revenueRes.ok) {
         setRevenue(revenueData);
@@ -240,7 +258,18 @@ export default function AdsPanel() {
       {activeTab === 'slots' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-800">مواقع الإعلانات</h3>
+            <div className="flex items-center gap-4">
+              <h3 className="text-lg font-semibold text-slate-800">مواقع الإعلانات</h3>
+              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={params.includeDeleted}
+                  onChange={(e) => setParams({ ...params, includeDeleted: e.target.checked, page: 1 })}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                عرض المحذوفات
+              </label>
+            </div>
             <button
               onClick={() => {
                 setEditingSlot(null);
@@ -258,14 +287,15 @@ export default function AdsPanel() {
               لا توجد مواقع إعلانات. قم بإضافة موقع جديد.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {adSlots.map((slot) => (
-                <div
-                  key={slot.id}
-                  className={`bg-white rounded-xl shadow p-4 border-2 ${
-                    slot.isActive ? 'border-green-200' : 'border-slate-200'
-                  }`}
-                >
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {adSlots.map((slot) => (
+                  <div
+                    key={slot.id}
+                    className={`bg-white rounded-xl shadow p-4 border-2 ${
+                      slot.isActive ? 'border-green-200' : 'border-slate-200'
+                    }`}
+                  >
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h4 className="font-medium text-slate-800">{slot.name}</h4>
@@ -333,8 +363,34 @@ export default function AdsPanel() {
                 </div>
               ))}
             </div>
-          )}
-        </div>
+
+            {/* Pagination */}
+            {totalSlots > params.limit && (
+              <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border">
+                <div className="text-sm text-slate-500">
+                  عرض {adSlots.length} من {totalSlots} موقع
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setParams({ ...params, page: params.page - 1 })}
+                    disabled={params.page === 1}
+                    className="px-3 py-1 border rounded hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    السابق
+                  </button>
+                  <button
+                    onClick={() => setParams({ ...params, page: params.page + 1 })}
+                    disabled={params.page * params.limit >= totalSlots}
+                    className="px-3 py-1 border rounded hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    التالي
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
       )}
 
       {/* Revenue Tab */}

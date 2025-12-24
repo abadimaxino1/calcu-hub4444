@@ -1,589 +1,384 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Globe, 
+  Link as LinkIcon, 
+  AlertTriangle, 
+  Settings, 
+  Plus, 
+  Trash2, 
+  RefreshCw,
+  CheckCircle,
+  ExternalLink,
+  FileCode,
+  Search
+} from 'lucide-react';
+
+interface Redirect {
+  id: string;
+  fromPath: string;
+  toPath: string;
+  type: number;
+  enabled: boolean;
+}
+
+interface BrokenLink {
+  id: string;
+  url: string;
+  statusCode: number;
+  sourcePage: string;
+  lastChecked: string;
+  isFixed: boolean;
+}
 
 interface SeoConfig {
+  key: string;
+  value: string;
+}
+
+interface SchemaTemplate {
+  id: string;
+  name: string;
+  template: string;
+  description: string;
+}
+
+interface PageMetadata {
   id: string;
   pagePath: string;
-  titleAr: string;
   titleEn: string;
-  descriptionAr: string;
   descriptionEn: string;
-  keywords: string;
-  ogImage: string;
-  canonicalUrl: string;
-  noIndex: boolean;
-  noFollow: boolean;
-  structuredData: string;
-  updatedAt: string;
 }
 
 export default function SeoPanel() {
+  const [activeTab, setActiveTab] = useState<'metadata' | 'redirects' | 'broken-links' | 'config' | 'schema'>('metadata');
+  const [metadata, setMetadata] = useState<PageMetadata[]>([]);
+  const [redirects, setRedirects] = useState<Redirect[]>([]);
+  const [brokenLinks, setBrokenLinks] = useState<BrokenLink[]>([]);
   const [configs, setConfigs] = useState<SeoConfig[]>([]);
+  const [schemas, setSchemas] = useState<SchemaTemplate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [editingConfig, setEditingConfig] = useState<SeoConfig | null>(null);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [sitemapStatus, setSitemapStatus] = useState<any>(null);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    fetchConfigs();
-    fetchSitemapStatus();
-  }, []);
+    fetchData();
+  }, [activeTab]);
 
-  const fetchConfigs = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/seo/configs', { credentials: 'include' });
-      const data = await response.json();
-      if (response.ok) {
-        setConfigs(data.configs || []);
-      } else {
-        setError(data.error || 'Failed to fetch SEO configs');
+      if (activeTab === 'metadata') {
+        const res = await fetch('/api/seo/configs');
+        if (res.ok) {
+          const data = await res.json();
+          setMetadata(data.configs || []);
+        }
+      } else if (activeTab === 'redirects') {
+        const res = await fetch('/api/admin/growth/seo/redirects');
+        if (res.ok) setRedirects(await res.json());
+      } else if (activeTab === 'broken-links') {
+        const res = await fetch('/api/admin/growth/seo/broken-links');
+        if (res.ok) setBrokenLinks(await res.json());
+      } else if (activeTab === 'config') {
+        const res = await fetch('/api/admin/growth/seo/config');
+        if (res.ok) setConfigs(await res.json());
+      } else if (activeTab === 'schema') {
+        const res = await fetch('/api/admin/growth/seo/schema-templates');
+        if (res.ok) setSchemas(await res.json());
       }
-    } catch (err) {
-      setError('Failed to connect to server');
+    } catch (error) {
+      console.error('Failed to fetch SEO data', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchSitemapStatus = async () => {
+  const handleStartScan = async () => {
+    setScanning(true);
     try {
-      const response = await fetch('/api/seo/sitemap/status', { credentials: 'include' });
-      const data = await response.json();
-      setSitemapStatus(data);
-    } catch (err) {
-      console.error('Failed to fetch sitemap status');
+      await fetch('/api/admin/growth/seo/broken-links/scan', { method: 'POST' });
+      alert('Scan started! Check back in a few minutes.');
+    } catch (error) {
+      alert('Failed to start scan');
+    } finally {
+      setScanning(false);
     }
   };
 
-  const handleSave = async (config: SeoConfig) => {
+  const handleSaveConfig = async (key: string, value: string) => {
     try {
-      const method = config.id ? 'PUT' : 'POST';
-      const endpoint = config.id ? `/api/seo/configs/${config.id}` : '/api/seo/configs';
-
-      const response = await fetch(endpoint, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(config),
-      });
-
-      if (response.ok) {
-        setIsEditorOpen(false);
-        setEditingConfig(null);
-        fetchConfigs();
-      } else {
-        const data = await response.json();
-        alert(data.error || 'Failed to save');
-      }
-    } catch (err) {
-      alert('Failed to save');
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('هل أنت متأكد من الحذف؟')) return;
-
-    try {
-      const response = await fetch(`/api/seo/configs/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        fetchConfigs();
-      } else {
-        const data = await response.json();
-        alert(data.error || 'Failed to delete');
-      }
-    } catch (err) {
-      alert('Failed to delete');
-    }
-  };
-
-  const handleRegenerateSitemap = async () => {
-    try {
-      const response = await fetch('/api/seo/sitemap/regenerate', {
+      await fetch('/api/admin/growth/seo/config', {
         method: 'POST',
-        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value })
       });
-
-      if (response.ok) {
-        alert('تم إعادة إنشاء خريطة الموقع بنجاح');
-        fetchSitemapStatus();
-      } else {
-        const data = await response.json();
-        alert(data.error || 'Failed to regenerate sitemap');
-      }
-    } catch (err) {
-      alert('Failed to regenerate sitemap');
+      fetchData();
+    } catch (error) {
+      alert('Failed to save config');
     }
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-800">إعدادات SEO</h2>
-        <button
-          onClick={() => {
-            setEditingConfig(null);
-            setIsEditorOpen(true);
-          }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
-        >
-          <span>+</span>
-          <span>إضافة إعداد</span>
-        </button>
-      </div>
-
-      {/* Sitemap Status Card */}
-      <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-6 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold mb-2">خريطة الموقع (Sitemap)</h3>
-            <p className="text-green-100 text-sm">
-              آخر تحديث: {sitemapStatus?.lastGenerated || 'غير معروف'}
-            </p>
-            <p className="text-green-100 text-sm">
-              عدد الروابط: {sitemapStatus?.urlCount || 0}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={handleRegenerateSitemap}
-              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition"
-            >
-              إعادة الإنشاء
-            </button>
-            <a
-              href="/sitemap.xml"
-              target="_blank"
-              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm text-center transition"
-            >
-              عرض الخريطة
-            </a>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick SEO Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl shadow p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-              📄
-            </div>
-            <div>
-              <p className="text-sm text-slate-600">صفحات مُعدّة</p>
-              <p className="text-xl font-bold text-slate-900">{configs.length}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 text-green-600 flex items-center justify-center">
-              ✅
-            </div>
-            <div>
-              <p className="text-sm text-slate-600">مُفهرسة</p>
-              <p className="text-xl font-bold text-slate-900">
-                {configs.filter((c) => !c.noIndex).length}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-yellow-50 text-yellow-600 flex items-center justify-center">
-              🖼️
-            </div>
-            <div>
-              <p className="text-sm text-slate-600">بها OG Image</p>
-              <p className="text-xl font-bold text-slate-900">
-                {configs.filter((c) => c.ogImage).length}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-              📊
-            </div>
-            <div>
-              <p className="text-sm text-slate-600">Structured Data</p>
-              <p className="text-xl font-bold text-slate-900">
-                {configs.filter((c) => c.structuredData).length}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-lg">
-          <p>{error}</p>
-        </div>
-      )}
-
-      {/* Configs Table */}
-      {configs.length === 0 ? (
-        <div className="bg-slate-50 rounded-lg p-8 text-center text-slate-600">
-          لا توجد إعدادات SEO. قم بإضافة إعداد جديد.
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">المسار</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">العنوان</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-slate-600">الحالة</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">آخر تحديث</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-slate-600">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {configs.map((config) => (
-                <tr key={config.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-sm font-mono" dir="ltr">
-                    {config.pagePath}
-                  </td>
-                  <td className="px-4 py-3 text-sm">{config.titleAr || config.titleEn}</td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      {config.noIndex && (
-                        <span className="px-2 py-0.5 text-xs bg-red-100 text-red-600 rounded">
-                          noIndex
-                        </span>
-                      )}
-                      {config.noFollow && (
-                        <span className="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-600 rounded">
-                          noFollow
-                        </span>
-                      )}
-                      {!config.noIndex && !config.noFollow && (
-                        <span className="px-2 py-0.5 text-xs bg-green-100 text-green-600 rounded">
-                          مُفهرس
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">
-                    {new Date(config.updatedAt).toLocaleDateString('ar-SA')}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => {
-                        setEditingConfig(config);
-                        setIsEditorOpen(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-800 mx-1"
-                      title="تعديل"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => handleDelete(config.id)}
-                      className="text-red-600 hover:text-red-800 mx-1"
-                      title="حذف"
-                    >
-                      🗑️
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* SEO Tips */}
-      <div className="bg-blue-50 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-blue-800 mb-4">نصائح SEO</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-700">
-          <div className="flex items-start gap-2">
-            <span>💡</span>
-            <span>استخدم عناوين فريدة لكل صفحة (50-60 حرف)</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span>💡</span>
-            <span>اكتب أوصاف meta جذابة (150-160 حرف)</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span>💡</span>
-            <span>أضف صورة OG لكل صفحة للمشاركة على السوشيال</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span>💡</span>
-            <span>استخدم Structured Data للحاسبات والأسئلة الشائعة</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Editor Modal */}
-      {isEditorOpen && (
-        <SeoEditorModal
-          config={editingConfig}
-          onSave={handleSave}
-          onClose={() => {
-            setIsEditorOpen(false);
-            setEditingConfig(null);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-// SEO Editor Modal
-function SeoEditorModal({
-  config,
-  onSave,
-  onClose,
-}: {
-  config: SeoConfig | null;
-  onSave: (config: SeoConfig) => void;
-  onClose: () => void;
-}) {
-  const [formData, setFormData] = useState<Partial<SeoConfig>>(
-    config || {
-      pagePath: '',
-      titleAr: '',
-      titleEn: '',
-      descriptionAr: '',
-      descriptionEn: '',
-      keywords: '',
-      ogImage: '',
-      canonicalUrl: '',
-      noIndex: false,
-      noFollow: false,
-      structuredData: '',
-    }
-  );
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData as SeoConfig);
-  };
-
-  // Character counters
-  const titleArLength = formData.titleAr?.length || 0;
-  const titleEnLength = formData.titleEn?.length || 0;
-  const descArLength = formData.descriptionAr?.length || 0;
-  const descEnLength = formData.descriptionEn?.length || 0;
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-auto">
-        <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">
-            {config ? 'تعديل إعداد SEO' : 'إضافة إعداد SEO'}
-          </h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-700">
-            ✕
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <Globe className="w-6 h-6 text-indigo-600" />
+          SEO Operations
+        </h2>
+        <div className="flex gap-2">
+          <button 
+            onClick={fetchData}
+            className="p-2 text-gray-500 hover:text-indigo-600 transition-colors"
+            title="Refresh Data"
+          >
+            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Page Path */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">مسار الصفحة</label>
-            <input
-              type="text"
-              value={formData.pagePath}
-              onChange={(e) => setFormData({ ...formData, pagePath: e.target.value })}
-              className="w-full px-3 py-2 border rounded-lg font-mono"
-              placeholder="/calculators/salary"
-              dir="ltr"
-              required
-            />
-          </div>
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 overflow-x-auto">
+        {[
+          { id: 'metadata', label: 'Page Metadata', icon: Search },
+          { id: 'redirects', label: 'Redirects', icon: LinkIcon },
+          { id: 'broken-links', label: 'Broken Links', icon: AlertTriangle },
+          { id: 'config', label: 'Global Config', icon: Settings },
+          { id: 'schema', label: 'Schema Library', icon: FileCode },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+              activeTab === tab.id
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <tab.icon className="w-4 h-4" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-          {/* Titles */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                العنوان (عربي)
-                <span className={`float-left ${titleArLength > 60 ? 'text-red-500' : 'text-slate-400'}`}>
-                  {titleArLength}/60
-                </span>
-              </label>
-              <input
-                type="text"
-                value={formData.titleAr}
-                onChange={(e) => setFormData({ ...formData, titleAr: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg"
-                required
-              />
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {activeTab === 'metadata' && (
+          <div className="p-6">
+            <div className="flex justify-between mb-4">
+              <h3 className="text-lg font-semibold">Page SEO Metadata</h3>
+              <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+                <Plus className="w-4 h-4" />
+                New Page Config
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                العنوان (إنجليزي)
-                <span className={`float-left ${titleEnLength > 60 ? 'text-red-500' : 'text-slate-400'}`}>
-                  {titleEnLength}/60
-                </span>
-              </label>
-              <input
-                type="text"
-                value={formData.titleEn}
-                onChange={(e) => setFormData({ ...formData, titleEn: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg"
-                dir="ltr"
-              />
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                  <th className="px-4 py-3">Path</th>
+                  <th className="px-4 py-3">Title (EN)</th>
+                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {metadata.map((m) => (
+                  <tr key={m.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-4 font-mono text-sm">{m.pagePath}</td>
+                    <td className="px-4 py-4 text-sm">{m.titleEn}</td>
+                    <td className="px-4 py-4 text-sm text-gray-500 truncate max-w-xs">{m.descriptionEn}</td>
+                    <td className="px-4 py-4 text-right">
+                      <button className="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
+                      <button className="text-red-600 hover:text-red-900">Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'redirects' && (
+          <div className="p-6">
+            <div className="flex justify-between mb-4">
+              <h3 className="text-lg font-semibold">Path Redirects (301/302)</h3>
+              <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+                <Plus className="w-4 h-4" />
+                Add Redirect
+              </button>
             </div>
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                  <th className="px-4 py-3">From Path</th>
+                  <th className="px-4 py-3">To Path</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {redirects.map((r) => (
+                  <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-4 font-mono text-sm">{r.fromPath}</td>
+                    <td className="px-4 py-4 font-mono text-sm">{r.toPath}</td>
+                    <td className="px-4 py-4">
+                      <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                        {r.type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        r.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {r.enabled ? 'Active' : 'Disabled'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <button className="text-gray-400 hover:text-red-600 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        )}
 
-          {/* Descriptions */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                الوصف (عربي)
-                <span className={`float-left ${descArLength > 160 ? 'text-red-500' : 'text-slate-400'}`}>
-                  {descArLength}/160
-                </span>
-              </label>
-              <textarea
-                value={formData.descriptionAr}
-                onChange={(e) => setFormData({ ...formData, descriptionAr: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg h-24"
-              />
+        {activeTab === 'broken-links' && (
+          <div className="p-6">
+            <div className="flex justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">Broken Link Report</h3>
+                <p className="text-sm text-gray-500">Last scan: {brokenLinks[0]?.lastChecked || 'Never'}</p>
+              </div>
+              <button 
+                onClick={handleStartScan}
+                disabled={scanning}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${scanning ? 'animate-spin' : ''}`} />
+                {scanning ? 'Scanning...' : 'Run Full Scan'}
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                الوصف (إنجليزي)
-                <span className={`float-left ${descEnLength > 160 ? 'text-red-500' : 'text-slate-400'}`}>
-                  {descEnLength}/160
-                </span>
-              </label>
-              <textarea
-                value={formData.descriptionEn}
-                onChange={(e) => setFormData({ ...formData, descriptionEn: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg h-24"
-                dir="ltr"
-              />
-            </div>
-          </div>
-
-          {/* Keywords */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">الكلمات المفتاحية</label>
-            <input
-              type="text"
-              value={formData.keywords}
-              onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
-              className="w-full px-3 py-2 border rounded-lg"
-              placeholder="حاسبة الراتب, راتب سعودي, GOSI"
-            />
-            <p className="text-xs text-slate-500 mt-1">فصل بفاصلة</p>
-          </div>
-
-          {/* OG Image & Canonical */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">صورة OG</label>
-              <input
-                type="text"
-                value={formData.ogImage}
-                onChange={(e) => setFormData({ ...formData, ogImage: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg"
-                placeholder="https://example.com/og-image.png"
-                dir="ltr"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Canonical URL</label>
-              <input
-                type="text"
-                value={formData.canonicalUrl}
-                onChange={(e) => setFormData({ ...formData, canonicalUrl: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg"
-                placeholder="https://calcuhub.com/page"
-                dir="ltr"
-              />
-            </div>
-          </div>
-
-          {/* Robots */}
-          <div className="flex items-center gap-6">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={formData.noIndex}
-                onChange={(e) => setFormData({ ...formData, noIndex: e.target.checked })}
-                className="rounded"
-              />
-              <span className="text-sm text-slate-700">noIndex (عدم الفهرسة)</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={formData.noFollow}
-                onChange={(e) => setFormData({ ...formData, noFollow: e.target.checked })}
-                className="rounded"
-              />
-              <span className="text-sm text-slate-700">noFollow (عدم تتبع الروابط)</span>
-            </label>
-          </div>
-
-          {/* Structured Data */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Structured Data (JSON-LD)
-            </label>
-            <textarea
-              value={formData.structuredData}
-              onChange={(e) => setFormData({ ...formData, structuredData: e.target.value })}
-              className="w-full px-3 py-2 border rounded-lg h-40 font-mono text-sm"
-              placeholder='{"@context": "https://schema.org", "@type": "FAQPage", ...}'
-              dir="ltr"
-            />
-          </div>
-
-          {/* Preview */}
-          <div className="bg-slate-50 rounded-lg p-4">
-            <p className="text-sm font-medium text-slate-700 mb-2">معاينة Google</p>
-            <div className="bg-white rounded border p-3">
-              <p className="text-blue-700 text-lg hover:underline cursor-pointer line-clamp-1">
-                {formData.titleAr || 'عنوان الصفحة'}
-              </p>
-              <p className="text-green-700 text-sm" dir="ltr">
-                calcuhub.com{formData.pagePath || '/page'}
-              </p>
-              <p className="text-slate-600 text-sm line-clamp-2">
-                {formData.descriptionAr || 'وصف الصفحة سيظهر هنا...'}
-              </p>
+            <div className="space-y-4">
+              {brokenLinks.map((link) => (
+                <div key={link.id} className="flex items-center justify-between p-4 border border-red-100 bg-red-50 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-600 mt-1" />
+                    <div>
+                      <div className="font-medium text-red-900 flex items-center gap-2">
+                        {link.url}
+                        <span className="text-xs bg-red-200 text-red-800 px-2 py-0.5 rounded">
+                          HTTP {link.statusCode}
+                        </span>
+                      </div>
+                      <div className="text-sm text-red-700">
+                        Found on: <span className="font-mono">{link.sourcePage}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="p-2 text-gray-500 hover:text-indigo-600 bg-white rounded-md border border-gray-200 shadow-sm">
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                    <button className="p-2 text-gray-500 hover:text-green-600 bg-white rounded-md border border-gray-200 shadow-sm">
+                      <CheckCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {brokenLinks.length === 0 && !loading && (
+                <div className="text-center py-12">
+                  <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900">No broken links found!</h4>
+                  <p className="text-gray-500">Your site is looking healthy.</p>
+                </div>
+              )}
             </div>
           </div>
+        )}
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-slate-600 hover:text-slate-800"
-            >
-              إلغاء
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              حفظ
-            </button>
+        {activeTab === 'config' && (
+          <div className="p-6 space-y-6">
+            <h3 className="text-lg font-semibold">Global SEO Settings</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Robots.txt Rules</label>
+                <textarea 
+                  className="w-full h-32 p-3 font-mono text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="User-agent: *&#10;Disallow: /admin/"
+                  defaultValue={configs.find(c => c.key === 'robots_txt')?.value || ''}
+                  onBlur={(e) => handleSaveConfig('robots_txt', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Canonical Base URL</label>
+                <input 
+                  type="text"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="https://calcu-hub.com"
+                  defaultValue={configs.find(c => c.key === 'canonical_base')?.value || ''}
+                  onBlur={(e) => handleSaveConfig('canonical_base', e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="pt-6 border-t border-gray-100">
+              <h4 className="font-medium mb-4">OG Image Generator Preview</h4>
+              <div className="flex gap-4 items-end">
+                <div className="flex-1 space-y-2">
+                  <label className="block text-sm text-gray-500">Test Title</label>
+                  <input 
+                    type="text" 
+                    id="og-test-title"
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                    placeholder="Mortgage Calculator"
+                  />
+                </div>
+                <button 
+                  onClick={() => {
+                    const title = (document.getElementById('og-test-title') as HTMLInputElement).value;
+                    window.open(`/api/admin/growth/seo/og-image?title=${encodeURIComponent(title)}`, '_blank');
+                  }}
+                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  Generate Preview
+                </button>
+              </div>
+            </div>
           </div>
-        </form>
+        )}
+
+        {activeTab === 'schema' && (
+          <div className="p-6">
+            <div className="flex justify-between mb-4">
+              <h3 className="text-lg font-semibold">JSON-LD Schema Templates</h3>
+              <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+                <Plus className="w-4 h-4" />
+                New Template
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {schemas.map((s) => (
+                <div key={s.id} className="p-4 border border-gray-200 rounded-xl hover:border-indigo-300 transition-colors group">
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-bold text-gray-900">{s.name}</h4>
+                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button className="text-gray-400 hover:text-indigo-600"><Settings className="w-4 h-4" /></button>
+                      <button className="text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-3">{s.description}</p>
+                  <pre className="bg-gray-50 p-3 rounded-lg text-xs font-mono text-gray-600 overflow-hidden h-24">
+                    {s.template}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+

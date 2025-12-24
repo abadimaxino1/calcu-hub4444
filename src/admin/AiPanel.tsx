@@ -10,9 +10,8 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronRight,
-  Zap,
-  Settings,
-  Globe
+  Clock,
+  Zap
 } from 'lucide-react';
 
 interface AiTemplate {
@@ -56,22 +55,11 @@ interface AiFallbackRule {
   maxRetries: number;
 }
 
-interface AIIntegration {
-  id: string;
-  provider: string;
-  isEnabled: boolean;
-  model: string;
-  features: string[];
-  quota: number;
-  used: number;
-}
-
-export default function AIIntegrationsPanel() {
-  const [activeTab, setActiveTab] = useState<'templates' | 'usage' | 'fallback' | 'providers'>('templates');
+export default function AiPanel() {
+  const [activeTab, setActiveTab] = useState<'templates' | 'usage' | 'fallback'>('templates');
   const [templates, setTemplates] = useState<AiTemplate[]>([]);
   const [usageLogs, setUsageLogs] = useState<AiUsageLog[]>([]);
   const [fallbackRules, setFallbackRules] = useState<AiFallbackRule[]>([]);
-  const [integrations, setIntegrations] = useState<AIIntegration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,12 +79,6 @@ export default function AIIntegrationsPanel() {
       } else if (activeTab === 'fallback') {
         const res = await fetch('/api/admin/ai/fallback');
         setFallbackRules(await res.json());
-      } else if (activeTab === 'providers') {
-        const res = await fetch('/api/ai/config');
-        if (res.ok) {
-          const data = await res.json();
-          setIntegrations(data.configs || []);
-        }
       }
     } catch (err) {
       setError('Failed to fetch data');
@@ -167,19 +149,6 @@ export default function AIIntegrationsPanel() {
             Fallback Rules
           </div>
         </button>
-        <button
-          onClick={() => setActiveTab('providers')}
-          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'providers' 
-              ? 'border-indigo-600 text-indigo-600' 
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4" />
-            Providers
-          </div>
-        </button>
       </div>
 
       {/* Content */}
@@ -192,9 +161,6 @@ export default function AIIntegrationsPanel() {
         )}
         {activeTab === 'fallback' && (
           <FallbackManager rules={fallbackRules} onRefresh={fetchData} />
-        )}
-        {activeTab === 'providers' && (
-          <ProvidersList integrations={integrations} onRefresh={fetchData} />
         )}
       </div>
     </div>
@@ -417,10 +383,7 @@ function FallbackManager({ rules, onRefresh }: { rules: AiFallbackRule[], onRefr
                 <div className="text-sm font-mono text-indigo-600 font-bold uppercase tracking-wider">{rule.featureKey}</div>
                 <div className="text-xs text-gray-400 mt-1">Configured for high availability</div>
               </div>
-              <button 
-                title="Save Rule"
-                className="text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
+              <button className="text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Save className="w-4 h-4" />
               </button>
             </div>
@@ -453,45 +416,6 @@ function FallbackManager({ rules, onRefresh }: { rules: AiFallbackRule[], onRefr
             <p className="text-gray-500">No fallback rules configured. All features will use default providers.</p>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function ProvidersList({ integrations, onRefresh }: { integrations: AIIntegration[], onRefresh: () => void }) {
-  const aiProviders = [
-    { id: 'gemini', name: 'Google Gemini', icon: '🔮', free: true },
-    { id: 'openai', name: 'OpenAI', icon: '🤖', free: false },
-    { id: 'huggingface', name: 'Hugging Face', icon: '🤗', free: true },
-  ];
-
-  return (
-    <div className="p-6 space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {aiProviders.map(p => {
-          const integration = integrations.find(i => i.provider === p.id);
-          return (
-            <div key={p.id} className={`p-5 border rounded-xl ${integration?.isEnabled ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{p.icon}</span>
-                  <div>
-                    <div className="font-bold text-gray-900">{p.name}</div>
-                    {p.free && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold uppercase">Free Tier</span>}
-                  </div>
-                </div>
-                <div className={`w-3 h-3 rounded-full ${integration?.isEnabled ? 'bg-green-500' : 'bg-gray-300'}`} />
-              </div>
-              <div className="space-y-2 mb-4">
-                <div className="text-xs text-gray-500">Model: <span className="font-mono text-gray-700">{integration?.model || 'Not set'}</span></div>
-                <div className="text-xs text-gray-500">Quota: <span className="text-gray-700">{integration?.used || 0} / {integration?.quota || 0}</span></div>
-              </div>
-              <button className="w-full py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-                Configure
-              </button>
-            </div>
-          );
-        })}
       </div>
     </div>
   );

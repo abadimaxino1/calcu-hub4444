@@ -72,7 +72,7 @@ export default function Login({ onLogin }: LoginProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="admin@calcuhub.com"
+                placeholder="name@example.com"
                 required
                 disabled={loading}
                 dir="ltr"
@@ -125,15 +125,6 @@ export default function Login({ onLogin }: LoginProps) {
               )}
             </button>
           </form>
-
-          {/* Demo Credentials */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-xs text-gray-600 text-center mb-2">بيانات الدخول التجريبية:</p>
-            <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 font-mono" dir="ltr">
-              <div>Email: admin@calcuhub.com</div>
-              <div>Password: ChangeThisPassword123!</div>
-            </div>
-          </div>
         </div>
 
         {/* Footer */}
