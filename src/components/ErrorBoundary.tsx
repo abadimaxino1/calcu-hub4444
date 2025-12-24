@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import * as Sentry from "@sentry/react";
 
 interface Props {
   children: ReactNode;
@@ -37,17 +38,12 @@ export class ErrorBoundary extends Component<Props, State> {
       this.props.onError(error, errorInfo);
     }
     
-    // ============================================
-    // SENTRY INTEGRATION POINT
-    // ============================================
-    // To integrate with Sentry, uncomment and configure:
-    // 
-    // import * as Sentry from '@sentry/react';
-    // Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
-    //
-    // Or use the reportError function:
-    // reportError(error, { componentStack: errorInfo.componentStack });
-    // ============================================
+    // Report to Sentry
+    Sentry.captureException(error, {
+      extra: {
+        componentStack: errorInfo.componentStack,
+      },
+    });
   }
 
   handleRetry = (): void => {

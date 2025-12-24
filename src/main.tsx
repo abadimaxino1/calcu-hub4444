@@ -1,7 +1,20 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import * as Sentry from "@sentry/react";
+import { BrowserTracing } from "@sentry/tracing";
 import App from "./App";
 import "./tailwind.css";
+
+// Initialize Sentry
+if (import.meta.env.PROD) {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN || "https://placeholder@sentry.io/123",
+    integrations: [new BrowserTracing()],
+    tracesSampleRate: 0.1,
+    environment: import.meta.env.MODE,
+    release: import.meta.env.VITE_RELEASE_VERSION || "1.0.0",
+  });
+}
 
 // Initialize i18n before rendering
 import './i18n';
