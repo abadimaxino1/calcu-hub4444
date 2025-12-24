@@ -236,6 +236,7 @@ async function getActiveAssumptions() {
 
 // Helper: Calculate eCPM for given dimensions
 function getECPM(assumptions, slotName, device, country) {
+  slotName = slotName || 'DEFAULT';
   const slotKey = assumptions.eCPM.bySlot[slotName] ? slotName : 'DEFAULT';
   const deviceKey = device || 'desktop';
   const baseECPM = assumptions.eCPM.bySlot[slotKey][deviceKey] || assumptions.eCPM.bySlot[slotKey].desktop || 1.5;
@@ -249,6 +250,7 @@ function getECPM(assumptions, slotName, device, country) {
 
 // Helper: Calculate CPC for given dimensions
 function getCPC(assumptions, slotName, device, country) {
+  slotName = slotName || 'DEFAULT';
   const slotKey = assumptions.CPC.bySlot[slotName] ? slotName : 'DEFAULT';
   const deviceKey = device || 'desktop';
   const baseCPC = assumptions.CPC.bySlot[slotKey][deviceKey] || assumptions.CPC.bySlot[slotKey].desktop || 0.10;
@@ -264,10 +266,9 @@ function getCPC(assumptions, slotName, device, country) {
 router.get('/summary', requirePermission(PERMISSIONS.REVENUE_READ), async (req, res) => {
   try {
     const { from, to } = req.query;
-    const now = new Date();
     
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.setDate(now.getDate() - 30));
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const assumptions = await getActiveAssumptions();
 
@@ -355,9 +356,8 @@ router.get('/summary', requirePermission(PERMISSIONS.REVENUE_READ), async (req, 
 router.get('/by-slot', requirePermission(PERMISSIONS.REVENUE_READ), async (req, res) => {
   try {
     const { from, to } = req.query;
-    const now = new Date();
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const assumptions = await getActiveAssumptions();
 
@@ -413,9 +413,8 @@ router.get('/by-slot', requirePermission(PERMISSIONS.REVENUE_READ), async (req, 
 router.get('/by-page', requirePermission(PERMISSIONS.REVENUE_READ), async (req, res) => {
   try {
     const { from, to } = req.query;
-    const now = new Date();
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const assumptions = await getActiveAssumptions();
 
@@ -423,14 +422,14 @@ router.get('/by-page', requirePermission(PERMISSIONS.REVENUE_READ), async (req, 
     const pageViews = await prisma.pageView.groupBy({
       by: ['pagePath'],
       where: { createdAt: { gte: startDate, lte: endDate } },
-      _count: true,
+      _count: { _all: true },
     });
 
-    // Get calculation events
+    // Get calculation events (aggregated by pagePath to attribute to specific pages)
     const calcEvents = await prisma.calculationEvent.groupBy({
-      by: ['calculatorType'],
+      by: ['pagePath'],
       where: { createdAt: { gte: startDate, lte: endDate } },
-      _count: true,
+      _count: { _all: true },
     });
 
     // Get ad events by page
@@ -441,9 +440,8 @@ router.get('/by-page', requirePermission(PERMISSIONS.REVENUE_READ), async (req, 
 
     const pageStats = {};
 
-    // Initialize from page views
-    pageViews.forEach(pv => {
-      const path = pv.pagePath;
+    const getOrCreatePageStat = (pagePath) => {
+      const path = pagePath || 'unknown';
       if (!pageStats[path]) {
         pageStats[path] = {
           pagePath: path,
@@ -455,30 +453,31 @@ router.get('/by-page', requirePermission(PERMISSIONS.REVENUE_READ), async (req, 
           estimatedRevenue: 0,
         };
       }
-      pageStats[path].pageViews = pv._count;
+      return pageStats[path];
+    };
+
+    // Initialize from page views
+    pageViews.forEach(pv => {
+      const stat = getOrCreatePageStat(pv.pagePath);
+      stat.pageViews = pv._count._all;
+    });
+
+    // Merge calculation counts
+    calcEvents.forEach(ce => {
+      const stat = getOrCreatePageStat(ce.pagePath);
+      stat.calculations += ce._count._all;
     });
 
     // Add ad events
     adEvents.forEach(event => {
-      const path = event.pagePath;
-      if (!pageStats[path]) {
-        pageStats[path] = {
-          pagePath: path,
-          pageType: getPageType(path),
-          pageViews: 0,
-          calculations: 0,
-          adImpressions: 0,
-          adClicks: 0,
-          estimatedRevenue: 0,
-        };
-      }
+      const stat = getOrCreatePageStat(event.pagePath);
 
       if (event.eventType === 'IMPRESSION') {
-        pageStats[path].adImpressions++;
-        pageStats[path].estimatedRevenue += getECPM(assumptions, event.adSlot?.name || 'DEFAULT', event.device, event.country) / 1000;
+        stat.adImpressions++;
+        stat.estimatedRevenue += getECPM(assumptions, event.adSlot?.name, event.device, event.country) / 1000;
       } else if (event.eventType === 'CLICK') {
-        pageStats[path].adClicks++;
-        pageStats[path].estimatedRevenue += getCPC(assumptions, event.adSlot?.name || 'DEFAULT', event.device, event.country);
+        stat.adClicks++;
+        stat.estimatedRevenue += getCPC(assumptions, event.adSlot?.name, event.device, event.country);
       }
     });
 
@@ -486,10 +485,10 @@ router.get('/by-page', requirePermission(PERMISSIONS.REVENUE_READ), async (req, 
       .map(page => ({
         ...page,
         ctr: page.adImpressions > 0 ? (page.adClicks / page.adImpressions * 100).toFixed(2) : 0,
-        estimatedRevenue: page.estimatedRevenue.toFixed(2),
+        estimatedRevenue: page.estimatedRevenue,
         revenuePerView: page.pageViews > 0 ? (page.estimatedRevenue / page.pageViews).toFixed(4) : 0,
       }))
-      .sort((a, b) => parseFloat(b.estimatedRevenue) - parseFloat(a.estimatedRevenue))
+      .sort((a, b) => b.estimatedRevenue - a.estimatedRevenue)
       .slice(0, 50); // Top 50 pages
 
     return res.json({ pages: results });
@@ -516,9 +515,8 @@ function getPageType(path) {
 router.get('/by-country', requirePermission(PERMISSIONS.REVENUE_READ), async (req, res) => {
   try {
     const { from, to } = req.query;
-    const now = new Date();
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const assumptions = await getActiveAssumptions();
 
@@ -564,9 +562,8 @@ router.get('/by-country', requirePermission(PERMISSIONS.REVENUE_READ), async (re
 router.get('/by-device', requirePermission(PERMISSIONS.REVENUE_READ), async (req, res) => {
   try {
     const { from, to } = req.query;
-    const now = new Date();
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const assumptions = await getActiveAssumptions();
 
@@ -612,9 +609,8 @@ router.get('/by-device', requirePermission(PERMISSIONS.REVENUE_READ), async (req
 router.get('/over-time', requirePermission(PERMISSIONS.REVENUE_READ), async (req, res) => {
   try {
     const { from, to, granularity = 'day' } = req.query;
-    const now = new Date();
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const assumptions = await getActiveAssumptions();
 
@@ -691,7 +687,7 @@ router.post('/detect-anomalies', requirePermission(PERMISSIONS.REVENUE_READ), as
     const slotStats = await prisma.adEvent.groupBy({
       by: ['adSlotId', 'eventType'],
       where: { createdAt: { gte: dayAgo } },
-      _count: true,
+      _count: { _all: true },
     });
 
     const slotMetrics = {};
@@ -699,8 +695,8 @@ router.post('/detect-anomalies', requirePermission(PERMISSIONS.REVENUE_READ), as
       if (!slotMetrics[stat.adSlotId]) {
         slotMetrics[stat.adSlotId] = { impressions: 0, clicks: 0 };
       }
-      if (stat.eventType === 'IMPRESSION') slotMetrics[stat.adSlotId].impressions = stat._count;
-      if (stat.eventType === 'CLICK') slotMetrics[stat.adSlotId].clicks = stat._count;
+      if (stat.eventType === 'IMPRESSION') slotMetrics[stat.adSlotId].impressions = stat._count._all;
+      if (stat.eventType === 'CLICK') slotMetrics[stat.adSlotId].clicks = stat._count._all;
     });
 
     const slots = await prisma.adSlot.findMany();
@@ -813,7 +809,7 @@ router.post('/detect-anomalies', requirePermission(PERMISSIONS.REVENUE_READ), as
           periodStart: dayAgo,
           periodEnd: now,
           metrics: JSON.stringify({ rpm: actualRPM, maxExpected: assumptions.RPM.thresholds.maxExpected, impressions: totalImpressions }),
-          message: `Abnormally high RPM of $${actualRPM.toFixed(2)} detected (expected max: $${assumptions.RPM.thresholds.maxExpected})`,
+          message: `Abnormally high RPM of ${actualRPM.toFixed(2)} SAR detected (expected max: ${assumptions.RPM.thresholds.maxExpected} SAR)`,
         });
       } else if (actualRPM < assumptions.RPM.thresholds.minExpected / 2 && actualRevenue > 0) {
         alerts.push({
@@ -822,7 +818,7 @@ router.post('/detect-anomalies', requirePermission(PERMISSIONS.REVENUE_READ), as
           periodStart: dayAgo,
           periodEnd: now,
           metrics: JSON.stringify({ rpm: actualRPM, minExpected: assumptions.RPM.thresholds.minExpected, impressions: totalImpressions }),
-          message: `Low RPM of $${actualRPM.toFixed(2)} detected (expected min: $${assumptions.RPM.thresholds.minExpected})`,
+          message: `Low RPM of ${actualRPM.toFixed(2)} SAR detected (expected min: ${assumptions.RPM.thresholds.minExpected} SAR)`,
         });
       }
     }
@@ -873,12 +869,21 @@ router.get('/alerts', requirePermission(PERMISSIONS.REVENUE_READ), async (req, r
       take: parseInt(limit, 10),
     });
 
-    const counts = await prisma.monetizationAlert.groupBy({
+    const rawCounts = await prisma.monetizationAlert.groupBy({
       by: ['severity', 'isResolved'],
-      _count: true,
+      _count: { _all: true },
     });
 
-    return res.json({ alerts, counts });
+    const counts = rawCounts.map(c => ({
+      severity: c.severity,
+      isResolved: c.isResolved,
+      count: c._count._all,
+    }));
+
+    return res.json({ 
+      alerts, 
+      counts 
+    });
   } catch (error) {
     console.error('Get alerts error:', error);
     return res.status(500).json({ error: 'Server error' });
@@ -1032,9 +1037,8 @@ router.get('/forecast', requirePermission(PERMISSIONS.REVENUE_READ), async (req,
 router.get('/traffic-sources', requirePermission(PERMISSIONS.ANALYTICS_READ), async (req, res) => {
   try {
     const { from, to } = req.query;
-    const now = new Date();
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const assumptions = await getActiveAssumptions();
 
@@ -1149,9 +1153,8 @@ function extractDomain(referrer) {
 router.get('/export/summary', requirePermission(PERMISSIONS.ANALYTICS_EXPORT), async (req, res) => {
   try {
     const { from, to } = req.query;
-    const now = new Date();
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const assumptions = await getActiveAssumptions();
 
@@ -1202,9 +1205,8 @@ router.get('/export/summary', requirePermission(PERMISSIONS.ANALYTICS_EXPORT), a
 router.get('/export/by-slot', requirePermission(PERMISSIONS.ANALYTICS_EXPORT), async (req, res) => {
   try {
     const { from, to } = req.query;
-    const now = new Date();
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     // Reuse by-slot logic
     const data = await getBySlotData(startDate, endDate);
@@ -1275,21 +1277,20 @@ async function getBySlotData(startDate, endDate) {
 router.get('/export/traffic-sources', requirePermission(PERMISSIONS.ANALYTICS_EXPORT), async (req, res) => {
   try {
     const { from, to } = req.query;
-    const now = new Date();
-    const endDate = to ? new Date(to) : now;
-    const startDate = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     // Simplified traffic source export
     const pageViews = await prisma.pageView.groupBy({
       by: ['utmSource'],
       where: { createdAt: { gte: startDate, lte: endDate } },
-      _count: true,
+      _count: { _all: true },
     });
 
     const headers = ['Source', 'Page Views'];
     const csv = [
       headers.join(','),
-      ...pageViews.map(pv => `"${pv.utmSource || 'direct'}",${pv._count}`),
+      ...pageViews.map(pv => `"${pv.utmSource || 'direct'}",${pv._count._all}`),
     ].join('\n');
 
     res.setHeader('Content-Type', 'text/csv');

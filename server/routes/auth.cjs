@@ -122,17 +122,19 @@ router.post('/verify-2fa', async (req, res) => {
       return res.status(400).json({ error: 'Token and code required' });
     }
 
-    // Find temp session
     const tempSession = await prisma.session.findUnique({
       where: { token: `2fa_${tempToken}` },
-      include: { user: true },
     });
 
-    if (!tempSession || tempSession.expiresAt < new Date()) {
+    const tempExpiresAt = tempSession?.expiresAt ? new Date(tempSession.expiresAt) : null;
+    if (!tempSession || !tempExpiresAt || tempExpiresAt < new Date()) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
-    const user = tempSession.user;
+    const user = await prisma.user.findUnique({ where: { id: tempSession.userId } });
+    if (!user || !user.isActive) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
 
     // Verify TOTP code
     let speakeasy;
@@ -154,7 +156,7 @@ router.post('/verify-2fa', async (req, res) => {
     }
 
     // Delete temp session
-    await prisma.session.delete({ where: { id: tempSession.id } });
+    await prisma.session.delete({ where: { token: `2fa_${tempToken}` } });
 
     // Create real session
     const token = generateToken();
@@ -211,24 +213,26 @@ router.get('/check', async (req, res) => {
       return res.json({ ok: false });
     }
 
-    const session = await prisma.session.findUnique({
-      where: { token },
-      include: { user: true },
-    });
+    const session = await prisma.session.findUnique({ where: { token } });
+    const expiresAt = session?.expiresAt ? new Date(session.expiresAt) : null;
+    if (!session || !expiresAt || expiresAt < new Date()) {
+      return res.json({ ok: false });
+    }
 
-    if (!session || session.expiresAt < new Date() || !session.user.isActive) {
+    const user = await prisma.user.findUnique({ where: { id: session.userId } });
+    if (!user || !user.isActive) {
       return res.json({ ok: false });
     }
 
     return res.json({
       ok: true,
       user: {
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-        role: session.user.role,
-        username: session.user.name, // For backward compatibility
-        roles: [session.user.role], // For backward compatibility
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        username: user.name, // For backward compatibility
+        roles: [user.role], // For backward compatibility
       },
     });
   } catch (error) {
@@ -243,11 +247,7 @@ router.post('/logout', async (req, res) => {
     const token = req.cookies.calcu_admin;
 
     if (token) {
-      const session = await prisma.session.findUnique({
-        where: { token },
-        include: { user: true },
-      });
-
+      const session = await prisma.session.findUnique({ where: { token } });
       if (session) {
         await prisma.adminActivityLog.create({
           data: {
@@ -257,7 +257,7 @@ router.post('/logout', async (req, res) => {
           },
         });
 
-        await prisma.session.delete({ where: { id: session.id } });
+        await prisma.session.delete({ where: { token } });
       }
     }
 

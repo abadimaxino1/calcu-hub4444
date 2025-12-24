@@ -1,9 +1,149 @@
 // CMS routes for tools, features, and dynamic content
 const express = require('express');
 const { prisma } = require('../db.cjs');
-const { PERMISSIONS, requirePermission } = require('../rbac.cjs');
+const { PERMISSIONS, requirePermission, hasPermission } = require('../rbac.cjs');
+const { writeAuditLog } = require('../lib/audit.cjs');
 
 const router = express.Router();
+
+// ============================================
+// CMS Pages (Calculators, Policies, etc.)
+// ============================================
+
+// Get all CMS pages
+router.get('/pages', requirePermission(PERMISSIONS.CONTENT_READ), async (req, res) => {
+  try {
+    const pages = await prisma.cmsPage.findMany({
+      orderBy: { updatedAt: 'desc' }
+    });
+    return res.json(pages);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Get page with versions
+router.get('/pages/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { version, locale = 'ar' } = req.query;
+
+    const page = await prisma.cmsPage.findUnique({ where: { slug } });
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+
+    // Security: Only admins can see draft pages
+    if (page.status === 'draft' && (!req.user || !hasPermission(req.user.role, PERMISSIONS.CONTENT_READ))) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    let versionData;
+    if (version) {
+      // Only admins can see specific versions
+      if (!req.user || !hasPermission(req.user.role, PERMISSIONS.CONTENT_READ)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      versionData = await prisma.cmsPageVersion.findFirst({
+        where: { pageId: page.id, versionNumber: parseInt(version), locale }
+      });
+    } else if (page.currentVersionId) {
+      versionData = await prisma.cmsPageVersion.findUnique({
+        where: { id: page.currentVersionId }
+      });
+    }
+
+    return res.json({ page, version: versionData });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Create new version
+router.post('/pages/:slug/versions', requirePermission(PERMISSIONS.CONTENT_CREATE), async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { locale, title, description, bodyRichJson, examplesJson, faqJson, legalNotes, seoOverridesJson } = req.body;
+
+    let page = await prisma.cmsPage.findUnique({ where: { slug } });
+    if (!page) {
+      page = await prisma.cmsPage.create({
+        data: { slug, pageType: 'calculator', status: 'draft' }
+      });
+    }
+
+    const lastVersion = await prisma.cmsPageVersion.findFirst({
+      where: { pageId: page.id, locale },
+      orderBy: { versionNumber: 'desc' }
+    });
+
+    const versionNumber = (lastVersion?.versionNumber || 0) + 1;
+
+    const version = await prisma.cmsPageVersion.create({
+      data: {
+        pageId: page.id,
+        versionNumber,
+        locale,
+        title,
+        description,
+        bodyRichJson: bodyRichJson ? JSON.stringify(bodyRichJson) : null,
+        examplesJson: examplesJson ? JSON.stringify(examplesJson) : null,
+        faqJson: faqJson ? JSON.stringify(faqJson) : null,
+        legalNotes,
+        seoOverridesJson: seoOverridesJson ? JSON.stringify(seoOverridesJson) : null,
+        createdById: req.user.id
+      }
+    });
+
+    await writeAuditLog({
+      action: 'CMS_VERSION_CREATE',
+      entityType: 'CMS_PAGE_VERSION',
+      entityId: version.id,
+      entityLabel: `${slug} v${versionNumber} (${locale})`,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      afterJson: JSON.stringify(version)
+    });
+
+    return res.json(version);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Publish version
+router.post('/pages/:slug/publish', requirePermission(PERMISSIONS.CONTENT_PUBLISH), async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { versionId } = req.body;
+
+    const before = await prisma.cmsPage.findUnique({ where: { slug } });
+    const version = await prisma.cmsPageVersion.findUnique({ where: { id: versionId } });
+    if (!version) return res.status(404).json({ error: 'Version not found' });
+
+    const page = await prisma.cmsPage.update({
+      where: { slug },
+      data: {
+        currentVersionId: versionId,
+        status: 'published',
+        updatedAt: new Date()
+      }
+    });
+
+    await writeAuditLog({
+      action: 'CMS_PAGE_PUBLISH',
+      entityType: 'CMS_PAGE',
+      entityId: page.id,
+      entityLabel: slug,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      beforeJson: JSON.stringify(before),
+      afterJson: JSON.stringify(page)
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
 
 // ============================================
 // Tool Cards (Calculator listings)
@@ -68,6 +208,16 @@ router.post('/tools', requirePermission(PERMISSIONS.CONTENT_CREATE), async (req,
       },
     });
 
+    await writeAuditLog({
+      action: 'TOOL_CARD_CREATE',
+      entityType: 'TOOL_CARD',
+      entityId: card.id,
+      entityLabel: slug,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      afterJson: JSON.stringify(card)
+    });
+
     return res.json({ ok: true, tool: card });
   } catch (error) {
     console.error('Create tool card error:', error);
@@ -80,6 +230,9 @@ router.put('/tools/:id', requirePermission(PERMISSIONS.CONTENT_UPDATE), async (r
   try {
     const { titleAr, titleEn, descAr, descEn, icon, color, sortOrder, isFeaturedOnHome, isVisibleOnTools, isPublished } = req.body;
 
+    const before = await prisma.toolCard.findUnique({ where: { id: req.params.id } });
+    if (!before) return res.status(404).json({ error: 'Not found' });
+
     const card = await prisma.toolCard.update({
       where: { id: req.params.id },
       data: {
@@ -90,10 +243,21 @@ router.put('/tools/:id', requirePermission(PERMISSIONS.CONTENT_UPDATE), async (r
         ...(icon !== undefined && { icon }),
         ...(color !== undefined && { color }),
         ...(sortOrder !== undefined && { sortOrder }),
-        ...(isFeaturedOnHome !== undefined && { isFeaturedOnHome }),
-        ...(isVisibleOnTools !== undefined && { isVisibleOnTools }),
-        ...(isPublished !== undefined && { isPublished }),
+        ...(isFeaturedOnHome !== undefined && { isFeaturedOnHome: Boolean(isFeaturedOnHome) }),
+        ...(isVisibleOnTools !== undefined && { isVisibleOnTools: Boolean(isVisibleOnTools) }),
+        ...(isPublished !== undefined && { isPublished: Boolean(isPublished) }),
       },
+    });
+
+    await writeAuditLog({
+      action: 'TOOL_CARD_UPDATE',
+      entityType: 'TOOL_CARD',
+      entityId: card.id,
+      entityLabel: card.slug,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      beforeJson: JSON.stringify(before),
+      afterJson: JSON.stringify(card)
     });
 
     return res.json({ ok: true, tool: card });
@@ -106,7 +270,21 @@ router.put('/tools/:id', requirePermission(PERMISSIONS.CONTENT_UPDATE), async (r
 // Delete tool card
 router.delete('/tools/:id', requirePermission(PERMISSIONS.CONTENT_DELETE), async (req, res) => {
   try {
+    const before = await prisma.toolCard.findUnique({ where: { id: req.params.id } });
+    if (!before) return res.status(404).json({ error: 'Not found' });
+
     await prisma.toolCard.delete({ where: { id: req.params.id } });
+
+    await writeAuditLog({
+      action: 'TOOL_CARD_DELETE',
+      entityType: 'TOOL_CARD',
+      entityId: req.params.id,
+      entityLabel: before.slug,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      beforeJson: JSON.stringify(before)
+    });
+
     return res.json({ ok: true });
   } catch (error) {
     console.error('Delete tool card error:', error);
@@ -319,7 +497,7 @@ router.delete('/faqs/:id', requirePermission(PERMISSIONS.CONTENT_DELETE), async 
 // Seed default content
 // ============================================
 
-router.post('/seed', requirePermission(PERMISSIONS.SYSTEM_UPDATE), async (req, res) => {
+router.post('/seed', requirePermission(PERMISSIONS.SETTINGS_SYSTEM), async (req, res) => {
   try {
     // Seed default tool cards
     const defaultTools = [
@@ -464,13 +642,16 @@ router.post('/seed', requirePermission(PERMISSIONS.SYSTEM_UPDATE), async (req, r
     ];
 
     for (const faq of defaultFaqs) {
-      await prisma.fAQ.create({
-        data: {
-          ...faq,
-          question: faq.questionAr,
-          answer: faq.answerAr,
-        },
-      });
+      const existing = await prisma.fAQ.findFirst({ where: { questionAr: faq.questionAr } });
+      if (!existing) {
+        await prisma.fAQ.create({
+          data: {
+            ...faq,
+            question: faq.questionAr,
+            answer: faq.answerAr,
+          },
+        });
+      }
     }
 
     // Seed default SEO configs
@@ -564,4 +745,279 @@ router.post('/seed', requirePermission(PERMISSIONS.SYSTEM_UPDATE), async (req, r
   }
 });
 
+// ============================================
+// Advanced CMS (Pages & Versions)
+// ============================================
+
+const crypto = require('crypto');
+
+// ============================================
+// Public Content API
+// ============================================
+
+// Get published content for a page by slug and locale
+router.get('/content/:slug', async (req, res) => {
+  const { slug } = req.params;
+  const { locale = 'ar' } = req.query;
+
+  try {
+    const page = await prisma.cmsPage.findUnique({
+      where: { slug },
+      include: {
+        currentVersion: true
+      }
+    });
+
+    if (!page || !page.currentVersionId) {
+      return res.status(404).json({ error: 'Content not found' });
+    }
+
+    // If the current version matches the requested locale, return it
+    if (page.currentVersion.locale === locale) {
+      return res.json(page.currentVersion);
+    }
+
+    // Otherwise, find the latest published version for that locale
+    const version = await prisma.cmsPageVersion.findFirst({
+      where: {
+        pageId: page.id,
+        locale: locale
+      },
+      orderBy: { versionNumber: 'desc' }
+    });
+
+    if (!version) {
+      return res.status(404).json({ error: 'Content not found for this locale' });
+    }
+
+    return res.json(version);
+  } catch (error) {
+    console.error('Get public content error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ============================================
+// CMS Pages (Admin)
+// ============================================
+
+// List all CMS pages
+router.get('/pages', requirePermission(PERMISSIONS.CONTENT_READ), async (req, res) => {
+  try {
+    const pages = await prisma.cmsPage.findMany({
+      orderBy: { updatedAt: 'desc' }
+    });
+    return res.json(pages);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Create a new CMS page
+router.post('/pages', requirePermission(PERMISSIONS.CONTENT_MANAGE), async (req, res) => {
+  try {
+    const { slug, pageType } = req.body;
+    if (!slug || !pageType) return res.status(400).json({ error: 'Slug and pageType required' });
+
+    const existing = await prisma.cmsPage.findUnique({ where: { slug } });
+    if (existing) return res.status(400).json({ error: 'Slug already exists' });
+
+    const page = await prisma.cmsPage.create({
+      data: {
+        slug,
+        pageType,
+        status: 'draft',
+        createdById: req.user.id,
+        updatedById: req.user.id
+      }
+    });
+
+    await writeAuditLog({
+      action: 'CMS_PAGE_CREATE',
+      entityType: 'CMS_PAGE',
+      entityId: page.id,
+      entityLabel: slug,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      afterJson: JSON.stringify(page)
+    });
+
+    return res.json(page);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Get page details with versions
+router.get('/pages/:id', requirePermission(PERMISSIONS.CONTENT_READ), async (req, res) => {
+  try {
+    const page = await prisma.cmsPage.findUnique({ where: { id: req.params.id } });
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+
+    const versions = await prisma.cmsPageVersion.findMany({
+      where: { pageId: page.id },
+      orderBy: { versionNumber: 'desc' }
+    });
+
+    return res.json({ ...page, versions });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Create a new version for a page
+router.post('/pages/:id/versions', requirePermission(PERMISSIONS.CONTENT_MANAGE), async (req, res) => {
+  try {
+    const { locale, title, description, bodyRichJson, examplesJson, faqJson, legalNotes, seoOverridesJson } = req.body;
+    
+    const page = await prisma.cmsPage.findUnique({ where: { id: req.params.id } });
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+
+    const lastVersion = await prisma.cmsPageVersion.findFirst({
+      where: { pageId: page.id },
+      orderBy: { versionNumber: 'desc' }
+    });
+
+    const versionNumber = (lastVersion?.versionNumber || 0) + 1;
+
+    const version = await prisma.cmsPageVersion.create({
+      data: {
+        pageId: page.id,
+        versionNumber,
+        locale,
+        title,
+        description,
+        bodyRichJson: typeof bodyRichJson === 'string' ? bodyRichJson : JSON.stringify(bodyRichJson),
+        examplesJson: typeof examplesJson === 'string' ? examplesJson : JSON.stringify(examplesJson),
+        faqJson: typeof faqJson === 'string' ? faqJson : JSON.stringify(faqJson),
+        legalNotes,
+        seoOverridesJson: typeof seoOverridesJson === 'string' ? seoOverridesJson : JSON.stringify(seoOverridesJson),
+        createdById: req.user.id
+      }
+    });
+
+    await writeAuditLog({
+      action: 'CMS_VERSION_CREATE',
+      entityType: 'CMS_PAGE',
+      entityId: page.id,
+      entityLabel: `${page.slug} (v${versionNumber})`,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      afterJson: JSON.stringify(version)
+    });
+
+    return res.json(version);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Publish a version
+router.post('/pages/:id/publish', requirePermission(PERMISSIONS.CONTENT_PUBLISH), async (req, res) => {
+  try {
+    const { versionId, publishNotes } = req.body;
+    
+    const page = await prisma.cmsPage.findUnique({ where: { id: req.params.id } });
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+
+    const version = await prisma.cmsPageVersion.findUnique({ where: { id: versionId } });
+    if (!version || version.pageId !== page.id) return res.status(404).json({ error: 'Version not found' });
+
+    const updatedPage = await prisma.cmsPage.update({
+      where: { id: page.id },
+      data: {
+        status: 'published',
+        currentVersionId: version.id,
+        updatedById: req.user.id
+      }
+    });
+
+    await writeAuditLog({
+      action: 'CMS_PAGE_PUBLISH',
+      entityType: 'CMS_PAGE',
+      entityId: page.id,
+      entityLabel: `${page.slug} (v${version.versionNumber})`,
+      actorUserId: req.user.id,
+      actorRole: req.user.role,
+      metadataJson: JSON.stringify({ versionId, publishNotes })
+    });
+
+    return res.json(updatedPage);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Generate preview token
+router.post('/pages/:id/preview', requirePermission(PERMISSIONS.CONTENT_MANAGE), async (req, res) => {
+  try {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 3600000); // 1 hour
+
+    await prisma.cmsPreviewToken.create({
+      data: {
+        token,
+        pageId: req.params.id,
+        expiresAt,
+        createdById: req.user.id
+      }
+    });
+
+    return res.json({ token, expiresAt });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Get public content (published only)
+router.get('/public/:slug', async (req, res) => {
+  try {
+    const { locale = 'ar' } = req.query;
+    const page = await prisma.cmsPage.findUnique({ where: { slug: req.params.slug } });
+    
+    if (!page || page.status !== 'published' || !page.currentVersionId) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    // Find the latest published version for this locale
+    // If currentVersionId matches the locale, use it. Otherwise find the latest for that locale.
+    let version = await prisma.cmsPageVersion.findUnique({ where: { id: page.currentVersionId } });
+    
+    if (version.locale !== locale) {
+      version = await prisma.cmsPageVersion.findFirst({
+        where: { pageId: page.id, locale },
+        orderBy: { versionNumber: 'desc' }
+      });
+    }
+
+    if (!version) return res.status(404).json({ error: 'Content not available in this locale' });
+
+    return res.json({ page, version });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Get preview content with token
+router.get('/preview/:token', async (req, res) => {
+  try {
+    const previewToken = await prisma.cmsPreviewToken.findUnique({ where: { token: req.params.token } });
+    if (!previewToken || new Date(previewToken.expiresAt) < new Date()) {
+      return res.status(403).json({ error: 'Invalid or expired preview token' });
+    }
+
+    const page = await prisma.cmsPage.findUnique({ where: { id: previewToken.pageId } });
+    const versions = await prisma.cmsPageVersion.findMany({
+      where: { pageId: page.id },
+      orderBy: { versionNumber: 'desc' },
+      take: 2 // Get latest for both locales if possible
+    });
+
+    return res.json({ page, versions });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
+

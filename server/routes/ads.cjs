@@ -3,6 +3,8 @@ const express = require('express');
 const { prisma } = require('../db.cjs');
 const { PERMISSIONS, requirePermission } = require('../rbac.cjs');
 
+const { logAudit } = require('../lib/audit.cjs');
+
 const router = express.Router();
 
 // ============================================
@@ -13,12 +15,16 @@ const router = express.Router();
 router.get('/slots', async (req, res) => {
   try {
     const slots = await prisma.adSlot.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       select: {
         id: true,
         name: true,
         positionKey: true,
         pagePathPattern: true,
+        adClient: true,
+        adSlot: true,
+        format: true,
+        styleJson: true,
       },
     });
     return res.json({ slots });
@@ -31,10 +37,46 @@ router.get('/slots', async (req, res) => {
 // Get all ad slots (admin)
 router.get('/slots/all', requirePermission(PERMISSIONS.ADS_READ), async (req, res) => {
   try {
-    const slots = await prisma.adSlot.findMany({
-      orderBy: { name: 'asc' },
+    const { 
+      page = 1, 
+      limit = 20, 
+      search = '', 
+      sortBy = 'name', 
+      sortOrder = 'asc',
+      includeDeleted = 'false'
+    } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const where = {
+      deletedAt: includeDeleted === 'true' ? undefined : null,
+      OR: search ? [
+        { name: { contains: search } },
+        { positionKey: { contains: search } },
+        { pagePathPattern: { contains: search } }
+      ] : undefined
+    };
+
+    const [slots, total] = await Promise.all([
+      prisma.adSlot.findMany({
+        where,
+        orderBy: { [sortBy]: sortOrder },
+        skip,
+        take,
+      }),
+      prisma.adSlot.count({ where })
+    ]);
+
+    return res.json({ 
+      slots, 
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / take)
+      }
     });
-    return res.json({ slots });
   } catch (error) {
     console.error('Get all ad slots error:', error);
     return res.status(500).json({ error: 'Server error' });
@@ -51,19 +93,24 @@ router.post('/slots', requirePermission(PERMISSIONS.ADS_CREATE), async (req, res
     }
 
     const slot = await prisma.adSlot.create({
-      data: { name, pagePathPattern, positionKey, isActive, eCPM, cpc, notes },
+      data: { 
+        name, 
+        pagePathPattern, 
+        positionKey, 
+        isActive, 
+        eCPM, 
+        cpc, 
+        notes,
+        createdById: req.user.id
+      },
     });
 
-    // Log activity
-    await prisma.adminActivityLog.create({
-      data: {
-        adminUserId: req.user.id,
-        actionType: 'CREATE_AD_SLOT',
-        targetType: 'ad_slot',
-        targetId: slot.id,
-        detailsJson: JSON.stringify({ name, positionKey }),
-        ipAddress: req.ip,
-      },
+    await logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'AdSlot',
+      entityId: slot.id,
+      afterData: slot
     });
 
     return res.json({ ok: true, slot });
@@ -78,7 +125,12 @@ router.put('/slots/:id', requirePermission(PERMISSIONS.ADS_UPDATE), async (req, 
   try {
     const { name, pagePathPattern, positionKey, isActive, eCPM, cpc, notes } = req.body;
 
-    const updateData = {};
+    const before = await prisma.adSlot.findUnique({ where: { id: req.params.id } });
+    if (!before) return res.status(404).json({ error: 'Not found' });
+
+    const updateData = {
+      updatedById: req.user.id
+    };
     if (name) updateData.name = name;
     if (pagePathPattern) updateData.pagePathPattern = pagePathPattern;
     if (positionKey) updateData.positionKey = positionKey;
@@ -92,9 +144,78 @@ router.put('/slots/:id', requirePermission(PERMISSIONS.ADS_UPDATE), async (req, 
       data: updateData,
     });
 
+    await logAudit({
+      req,
+      action: 'UPDATE',
+      entityType: 'AdSlot',
+      entityId: slot.id,
+      beforeData: before,
+      afterData: slot
+    });
+
     return res.json({ ok: true, slot });
   } catch (error) {
     console.error('Update ad slot error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Soft delete ad slot
+router.delete('/slots/:id', requirePermission(PERMISSIONS.ADS_DELETE), async (req, res) => {
+  try {
+    const before = await prisma.adSlot.findUnique({ where: { id: req.params.id } });
+    if (!before) return res.status(404).json({ error: 'Not found' });
+
+    const slot = await prisma.adSlot.update({
+      where: { id: req.params.id },
+      data: { 
+        deletedAt: new Date(),
+        deletedById: req.user.id
+      }
+    });
+
+    await logAudit({
+      req,
+      action: 'DELETE',
+      entityType: 'AdSlot',
+      entityId: slot.id,
+      beforeData: before,
+      afterData: slot
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Delete ad slot error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Restore ad slot
+router.post('/slots/:id/restore', requirePermission(PERMISSIONS.ADS_UPDATE), async (req, res) => {
+  try {
+    const before = await prisma.adSlot.findUnique({ where: { id: req.params.id } });
+    if (!before) return res.status(404).json({ error: 'Not found' });
+
+    const slot = await prisma.adSlot.update({
+      where: { id: req.params.id },
+      data: { 
+        deletedAt: null,
+        deletedById: null
+      }
+    });
+
+    await logAudit({
+      req,
+      action: 'RESTORE',
+      entityType: 'AdSlot',
+      entityId: slot.id,
+      beforeData: before,
+      afterData: slot
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Restore ad slot error:', error);
     return res.status(500).json({ error: 'Server error' });
   }
 });
@@ -117,7 +238,23 @@ router.delete('/slots/:id', requirePermission(PERMISSIONS.ADS_DELETE), async (re
 // Track ad event (impression or click)
 router.post('/event', async (req, res) => {
   try {
-    const { adSlotId, eventType, sessionId, pagePath, device, locale } = req.body;
+    let { adSlotId, eventType, sessionId, pagePath, device, locale } = req.body;
+
+    // If pagePath is missing, try to infer from Referer
+    if (!pagePath && req.headers.referer) {
+      try {
+        const refererUrl = new URL(req.headers.referer);
+        const host = req.get('host');
+        
+        // Only infer if same-origin (host matches) to avoid garbage/external referers
+        if (refererUrl.host === host) {
+          pagePath = refererUrl.pathname;
+          console.debug(`[AdEvent] Inferred pagePath '${pagePath}' from referer '${req.headers.referer}'`);
+        }
+      } catch (e) {
+        // Invalid URL, ignore
+      }
+    }
 
     if (!adSlotId || !eventType || !sessionId || !pagePath) {
       return res.status(400).json({ error: 'adSlotId, eventType, sessionId, and pagePath required' });

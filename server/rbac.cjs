@@ -44,16 +44,24 @@ const PERMISSIONS = {
   ADS_CREATE: 'ads:create',
   ADS_UPDATE: 'ads:update',
   ADS_DELETE: 'ads:delete',
+  REVENUE_ADS_MANAGE: 'revenue:ads:manage',
 
   // Revenue
   REVENUE_READ: 'revenue:read',
   REVENUE_CREATE: 'revenue:create',
   REVENUE_UPDATE: 'revenue:update',
 
+  // Product Management
+  PRODUCT_CALCULATORS_MANAGE: 'product:calculators:manage',
+  PRODUCT_FLAGS_MANAGE: 'product:flags:manage',
+  GROWTH_EXPERIMENTS_MANAGE: 'growth:experiments:manage',
+
   // Analytics
   ANALYTICS_READ: 'analytics:read',
   ANALYTICS_EXPORT: 'analytics:export',
   ANALYTICS_FULL: 'analytics:full',
+  GROWTH_ANALYTICS_MANAGE: 'growth:analytics:manage',
+  GROWTH_SEO_MANAGE: 'growth:seo:manage',
 
   // System Settings
   SETTINGS_READ: 'settings:read',
@@ -66,6 +74,7 @@ const PERMISSIONS = {
 
   // Logs
   LOGS_READ: 'logs:read',
+  LOGS_EXPORT: 'logs:export',
   LOGS_FULL: 'logs:full',
 
   // Feature Flags
@@ -75,6 +84,28 @@ const PERMISSIONS = {
   // Tests (internal)
   TESTS_RUN: 'tests:run',
   TESTS_VIEW: 'tests:view',
+
+  // Ops & Health
+  OPS_HEALTH_VIEW: 'ops:health:view',
+  OPS_DIAGNOSTICS_RUN: 'ops:diagnostics:run',
+  OPS_ERRORS_VIEW: 'ops:errors:view',
+  OPS_ERRORS_MANAGE: 'ops:errors:manage',
+  OPS_JOBS_VIEW: 'ops:jobs:view',
+  OPS_JOBS_RUN: 'ops:jobs:run',
+  OPS_JOBS_SCHEDULE: 'ops:jobs:schedule',
+
+  // Backups
+  OPS_BACKUP_READ: 'ops:backups:read',
+  OPS_BACKUP_CREATE: 'ops:backups:create',
+  OPS_BACKUP_RESTORE: 'ops:backups:restore',
+  OPS_BACKUP_SCHEDULE: 'ops:backups:schedule',
+
+  // CMS Content
+  CONTENT_MANAGE: 'content:manage',
+  CONTENT_PUBLISH: 'content:publish',
+
+  // AI Management
+  AI_MANAGE: 'ai:manage',
 };
 
 // Role to permissions mapping
@@ -107,7 +138,20 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.DESIGN_READ,
     PERMISSIONS.DESIGN_UPDATE,
     PERMISSIONS.LOGS_READ,
+    PERMISSIONS.LOGS_EXPORT,
     PERMISSIONS.FEATURES_READ,
+    PERMISSIONS.OPS_BACKUP_READ,
+    PERMISSIONS.OPS_BACKUP_CREATE,
+    PERMISSIONS.OPS_BACKUP_SCHEDULE,
+    PERMISSIONS.CONTENT_MANAGE,
+    PERMISSIONS.CONTENT_PUBLISH,
+    PERMISSIONS.PRODUCT_CALCULATORS_MANAGE,
+    PERMISSIONS.PRODUCT_FLAGS_MANAGE,
+    PERMISSIONS.GROWTH_ANALYTICS_MANAGE,
+    PERMISSIONS.GROWTH_SEO_MANAGE,
+    PERMISSIONS.REVENUE_ADS_MANAGE,
+    PERMISSIONS.GROWTH_EXPERIMENTS_MANAGE,
+    PERMISSIONS.AI_MANAGE,
   ],
 
   [ROLES.IT]: [
@@ -118,11 +162,23 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.ANALYTICS_READ,
     PERMISSIONS.ANALYTICS_FULL,
     PERMISSIONS.LOGS_READ,
+    PERMISSIONS.LOGS_EXPORT,
     PERMISSIONS.LOGS_FULL,
     PERMISSIONS.FEATURES_READ,
     PERMISSIONS.FEATURES_UPDATE,
     PERMISSIONS.TESTS_RUN,
     PERMISSIONS.TESTS_VIEW,
+    PERMISSIONS.OPS_HEALTH_VIEW,
+    PERMISSIONS.OPS_DIAGNOSTICS_RUN,
+    PERMISSIONS.OPS_ERRORS_VIEW,
+    PERMISSIONS.OPS_ERRORS_MANAGE,
+    PERMISSIONS.OPS_JOBS_VIEW,
+    PERMISSIONS.OPS_JOBS_RUN,
+    PERMISSIONS.OPS_JOBS_SCHEDULE,
+    PERMISSIONS.OPS_BACKUP_READ,
+    PERMISSIONS.OPS_BACKUP_CREATE,
+    PERMISSIONS.OPS_BACKUP_SCHEDULE,
+    PERMISSIONS.AI_MANAGE,
   ],
 
   [ROLES.DESIGNER]: [
@@ -143,6 +199,8 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.BLOG_PUBLISH,
     PERMISSIONS.SEO_READ,
     PERMISSIONS.SEO_UPDATE,
+    PERMISSIONS.CONTENT_MANAGE,
+    PERMISSIONS.CONTENT_PUBLISH,
   ],
 
   [ROLES.ADS_MANAGER]: [

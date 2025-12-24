@@ -24,10 +24,11 @@ router.post('/pageview', async (req, res) => {
       else if (/tablet|ipad/i.test(userAgent)) detectedDevice = 'tablet';
     }
 
-    if (/chrome/i.test(userAgent)) browser = 'chrome';
+    // Browser detection - Edge must be checked before Chrome
+    if (/edg/i.test(userAgent)) browser = 'edge';
+    else if (/chrome/i.test(userAgent)) browser = 'chrome';
     else if (/firefox/i.test(userAgent)) browser = 'firefox';
     else if (/safari/i.test(userAgent)) browser = 'safari';
-    else if (/edge/i.test(userAgent)) browser = 'edge';
 
     // Get country from header (set by CDN/proxy) or IP geolocation service
     const country = req.headers['cf-ipcountry'] || req.headers['x-country'] || null;
@@ -50,37 +51,30 @@ router.post('/pageview', async (req, res) => {
       },
     });
 
-    // Update or create traffic session
+    // Update or create traffic session using upsert to avoid race conditions
     try {
-      const existingSession = await prisma.trafficSession.findUnique({
+      await prisma.trafficSession.upsert({
         where: { sessionId },
+        update: {
+          pageViews: { increment: 1 },
+          lastSeenAt: new Date(),
+        },
+        create: {
+          sessionId,
+          firstPagePath: pagePath,
+          referrer: referrer || null,
+          utmSource: utmSource || null,
+          utmMedium: utmMedium || null,
+          utmCampaign: utmCampaign || null,
+          utmTerm: utmTerm || null,
+          utmContent: utmContent || null,
+          country,
+          device: detectedDevice,
+          locale: locale || null,
+          pageViews: 1,
+          lastSeenAt: new Date(),
+        },
       });
-
-      if (existingSession) {
-        await prisma.trafficSession.update({
-          where: { sessionId },
-          data: {
-            pageViews: { increment: 1 },
-            lastSeenAt: new Date(),
-          },
-        });
-      } else {
-        await prisma.trafficSession.create({
-          data: {
-            sessionId,
-            firstPagePath: pagePath,
-            referrer: referrer || null,
-            utmSource: utmSource || null,
-            utmMedium: utmMedium || null,
-            utmCampaign: utmCampaign || null,
-            utmTerm: utmTerm || null,
-            utmContent: utmContent || null,
-            country,
-            device: detectedDevice,
-            locale: locale || null,
-          },
-        });
-      }
     } catch (sessionErr) {
       // Non-critical, don't fail the request
       console.warn('Failed to update traffic session:', sessionErr.message);
@@ -93,10 +87,61 @@ router.post('/pageview', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/analytics/events
+ * Public endpoint to track custom events
+ */
+router.post('/events', async (req, res) => {
+  try {
+    const { sessionId, eventKey, properties = {}, pagePath } = req.body;
+
+    if (!sessionId || !eventKey) {
+      return res.status(400).json({ error: 'sessionId and eventKey required' });
+    }
+
+    // Validate eventKey exists in AnalyticsEvent table
+    const eventDef = await prisma.analyticsEvent.findUnique({
+      where: { key: eventKey }
+    });
+
+    if (!eventDef || !eventDef.enabled) {
+      // Silently drop or return 204 to avoid leaking info
+      return res.status(204).end();
+    }
+
+    // Store event
+    await prisma.analyticsEventLog.create({
+      data: {
+        sessionId,
+        eventKey,
+        pagePath: pagePath || null,
+        propertiesJson: JSON.stringify(properties),
+        occurredAt: new Date()
+      }
+    });
+
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error('Track event error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Helper to safely stringify JSON
+function safeStringify(obj) {
+  try {
+    if (typeof obj === 'string') return obj;
+    return JSON.stringify(obj || {});
+  } catch (e) {
+    console.warn('JSON stringify failed:', e.message);
+    return '{}';
+  }
+}
+
 // Track calculation event
 router.post('/calculation', async (req, res) => {
   try {
-    const { sessionId, calculatorType, inputSummary, resultSummary, durationMs, device, locale, utmSource, utmMedium, utmCampaign } = req.body;
+    const { sessionId, calculatorType, pagePath, inputSummary, resultSummary, durationMs, device, locale, utmSource, utmMedium, utmCampaign } = req.body;
 
     if (!sessionId || !calculatorType) {
       return res.status(400).json({ error: 'sessionId and calculatorType required' });
@@ -109,8 +154,9 @@ router.post('/calculation', async (req, res) => {
       data: {
         sessionId,
         calculatorType,
-        inputSummary: typeof inputSummary === 'string' ? inputSummary : JSON.stringify(inputSummary || {}),
-        resultSummary: typeof resultSummary === 'string' ? resultSummary : JSON.stringify(resultSummary || {}),
+        pagePath: pagePath || null,
+        inputSummary: safeStringify(inputSummary),
+        resultSummary: safeStringify(resultSummary),
         durationMs: durationMs || 0,
         device: device || null,
         locale: locale || null,
@@ -141,6 +187,38 @@ router.post('/calculation', async (req, res) => {
   }
 });
 
+// Get analytics history (last 30 days)
+router.get('/history', requirePermission(PERMISSIONS.ANALYTICS_READ), async (req, res) => {
+  try {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const dateStr = thirtyDaysAgo.toISOString();
+
+    // Use raw query via the exposed _db instance in our shim
+    const pageViews = prisma._db.prepare(`
+      SELECT date(createdAt) as date, COUNT(*) as count 
+      FROM page_views 
+      WHERE createdAt >= ? 
+      GROUP BY date(createdAt)
+      ORDER BY date ASC
+    `).all(dateStr);
+
+    const revenue = prisma._db.prepare(`
+      SELECT date(dateTime) as date, SUM(revenueAmount) as amount 
+      FROM revenue_snapshots 
+      WHERE dateTime >= ? 
+      GROUP BY date(dateTime)
+      ORDER BY date ASC
+    `).all(dateStr);
+
+    return res.json({ pageViews, revenue });
+  } catch (error) {
+    console.error('Get analytics history error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Get analytics dashboard data (admin)
 router.get('/dashboard', requirePermission(PERMISSIONS.ANALYTICS_READ), async (req, res) => {
   try {
@@ -159,7 +237,7 @@ router.get('/dashboard', requirePermission(PERMISSIONS.ANALYTICS_READ), async (r
       todayCalculations,
       todayAdImpressions,
       todayAdClicks,
-      uniqueVisitorsToday,
+      uniqueVisitorsGrouped,
       topPages,
       topCalculators,
     ] = await Promise.all([
@@ -172,19 +250,20 @@ router.get('/dashboard', requirePermission(PERMISSIONS.ANALYTICS_READ), async (r
       prisma.pageView.groupBy({
         by: ['sessionId'],
         where: { createdAt: { gte: todayStart } },
-      }).then(r => r.length),
+      }),
       prisma.pageView.groupBy({
         by: ['pagePath'],
         where: { createdAt: { gte: weekStart } },
-        _count: true,
-        orderBy: { _count: { pagePath: 'desc' } },
+        _count: { _all: true },
+        orderBy: { _count: { _all: 'desc' } },
         take: 10,
       }),
       prisma.calculationEvent.groupBy({
         by: ['calculatorType'],
         where: { createdAt: { gte: weekStart } },
-        _count: true,
-        orderBy: { _count: { calculatorType: 'desc' } },
+        _count: { _all: true },
+        orderBy: { _count: { _all: 'desc' } },
+        take: 10,
       }),
     ]);
 
@@ -199,6 +278,8 @@ router.get('/dashboard', requirePermission(PERMISSIONS.ANALYTICS_READ), async (r
       where: { dateTime: { gte: monthStart } },
       _sum: { revenueAmount: true },
     });
+
+    const uniqueVisitorsToday = uniqueVisitorsGrouped ? uniqueVisitorsGrouped.length : 0;
 
     return res.json({
       today: {
@@ -216,8 +297,8 @@ router.get('/dashboard', requirePermission(PERMISSIONS.ANALYTICS_READ), async (r
         pageViews: monthPageViews,
         revenue: monthRevenue._sum.revenueAmount || 0,
       },
-      topPages: topPages.map(p => ({ path: p.pagePath, count: p._count })),
-      topCalculators: topCalculators.map(c => ({ type: c.calculatorType, count: c._count })),
+      topPages: topPages.map(p => ({ path: p.pagePath, count: p._count._all })),
+      topCalculators: topCalculators.map(c => ({ type: c.calculatorType, count: c._count._all })),
     });
   } catch (error) {
     console.error('Dashboard error:', error);
