@@ -421,6 +421,25 @@ f277bfb Fix code review feedback                                 ✅
 
 ---
 
+## 4. حوكمة الإدارة وتقوية CMS / Admin Governance & CMS Hardening ✅
+
+### أ) حوكمة الإدارة / Admin Governance:
+- ✅ **RBAC (Role-Based Access Control)**: نظام صلاحيات متكامل (Admin, Supervisor, Analyst, IT, Designer, Staff).
+- ✅ **Audit Logging**: تسجيل جميع العمليات الحساسة مع تتبع التغييرات (Diffs).
+- ✅ **Background Jobs**: نظام جدولة المهام الخلفية (Backups, Cleanup, Analytics Sync).
+- ✅ **Automated Backups**: نسخ احتياطي تلقائي لقاعدة البيانات.
+
+### ب) تقوية CMS / CMS Hardening:
+- ✅ **Bilingual Fallbacks**: نظام استرجاع ذكي للحقول الفارغة (Bilingual -> Legacy -> Opposite -> Default).
+- ✅ **Unified Public API**: توحيد جميع مسارات القراءة العامة تحت `/api/content/*`.
+- ✅ **Graceful Shutdown**: معالجة إغلاق الخادم بشكل آمن لضمان إنهاء المهام الخلفية.
+
+### ج) التحقق النهائي / Final Verification:
+- ✅ **Smoke Tests**: اجتياز جميع اختبارات التحقق الآلية على فرع `master`.
+- ✅ **Database Migrations**: تطبيق جميع الترحيلات (6 ترحيلات جديدة للحوكمة).
+
+---
+
 ## الخلاصة / Summary
 
 **جميع المزايا المطلوبة تم تنفيذها بنجاح! ✅**
