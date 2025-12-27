@@ -72,7 +72,33 @@ npm test
 npm run preview
 ```
 
-## 📱 Mobile Support
+## 📜 Scripts (Windows)
+
+### Server Management
+- `npm run stop:server`: Alias for `kill:4000` (stops the server).
+- `npm run kill:4000`: Forcefully terminates any process listening on port 4000.
+- `npm run dev:server`: Alias for starting the server (`node server/index.cjs`).
+- `npm run restart:server`: Kills the process on port 4000 and starts the server again.
+
+### Testing
+- `npm run test:smoke`: Runs the analytics API smoke test (unauthenticated).
+- `npm run test:smoke:auth`: Runs the analytics API smoke test (requires `CALCU_ADMIN_COOKIE`).
+- `npm run test:bool`: Runs the boolean type verification script.
+- `npm run restart:server:test`: Restarts server and runs smoke tests immediately.
+- `npm run restart:server:test:auth`: Restarts server and runs authenticated smoke tests.
+
+**Standard Smoke Test:**
+```powershell
+npm run restart:server:test
+```
+
+**Authenticated Smoke Test:**
+```powershell
+$env:CALCU_ADMIN_COOKIE="calcu_admin=..."
+npm run restart:server:test:auth
+```
+
+## �📱 Mobile Support
 
 The app is fully optimized for mobile devices:
 - Touch-friendly UI with minimum 44x44px touch targets

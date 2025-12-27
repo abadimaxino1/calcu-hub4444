@@ -33,6 +33,30 @@ export default function TestsPanel(){
       setRunning(false);
     }
   }
+
+  async function triggerError() {
+    setRunning(true);
+    setOut('Triggering test error...');
+    try {
+      const res = await fetch('/api/admin/ops/errors/test', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          message: "Test error from Admin UI",
+          level: "warning"
+        })
+      });
+      const j = await res.json();
+      setOut(JSON.stringify(j, null, 2));
+    } catch (e: any) {
+      setOut('Error: ' + e.message);
+    } finally {
+      setRunning(false);
+    }
+  }
   
   return (
     <div className="max-w-4xl">
@@ -45,13 +69,44 @@ export default function TestsPanel(){
         </p>
       </div>
       
-      <div className="mb-4">
+      <div className="flex gap-3 mb-4">
         <button 
           onClick={run} 
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={running}
         >
           {running ? 'Running...' : 'Check Test Status'}
+        </button>
+
+        <button 
+          onClick={triggerError} 
+          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={running}
+        >
+          Trigger Sentry Test Error
+        </button>
+
+        <button 
+          onClick={async () => {
+            setRunning(true);
+            setOut('Triggering Diagnostics Job...');
+            try {
+              const res = await fetch('/api/admin/ops/jobs/DIAGNOSTICS/run', {
+                method: 'POST',
+                credentials: 'include'
+              });
+              const j = await res.json();
+              setOut(JSON.stringify(j, null, 2));
+            } catch (e: any) {
+              setOut('Error: ' + e.message);
+            } finally {
+              setRunning(false);
+            }
+          }} 
+          className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={running}
+        >
+          Trigger Diagnostics Job
         </button>
       </div>
       

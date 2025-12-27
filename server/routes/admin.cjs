@@ -1,35 +1,16 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-
-// Middleware to check if user is authenticated
-function requireAuth(req, res, next) {
-  if (!req.session || !req.session.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-}
+const { prisma } = require('../db.cjs');
+const { requirePermission, PERMISSIONS } = require('../rbac.cjs');
 
 // ============================================
 // AI Integrations
 // ============================================
 
 // Get all AI integrations
-router.get('/ai-integrations', requireAuth, async (req, res) => {
+router.get('/ai-integrations', requirePermission(PERMISSIONS.SETTINGS_SYSTEM), async (req, res) => {
   try {
-    const integrations = await prisma.aIIntegration.findMany({
-      select: {
-        id: true,
-        provider: true,
-        isEnabled: true,
-        model: true,
-        features: true,
-        quota: true,
-        used: true,
-        lastReset: true,
-      },
-    });
+    const integrations = await prisma.aIIntegration.findMany();
 
     // Parse features JSON
     const parsed = integrations.map((i) => ({
@@ -45,7 +26,7 @@ router.get('/ai-integrations', requireAuth, async (req, res) => {
 });
 
 // Create AI integration
-router.post('/ai-integrations', requireAuth, async (req, res) => {
+router.post('/ai-integrations', requirePermission(PERMISSIONS.SETTINGS_SYSTEM), async (req, res) => {
   try {
     const { provider, isEnabled, apiKey, model, features, quota } = req.body;
 
@@ -74,7 +55,7 @@ router.post('/ai-integrations', requireAuth, async (req, res) => {
 });
 
 // Update AI integration
-router.put('/ai-integrations/:id', requireAuth, async (req, res) => {
+router.put('/ai-integrations/:id', requirePermission(PERMISSIONS.SETTINGS_SYSTEM), async (req, res) => {
   try {
     const { id } = req.params;
     const { isEnabled, apiKey, model, features, quota } = req.body;
@@ -103,7 +84,7 @@ router.put('/ai-integrations/:id', requireAuth, async (req, res) => {
 // ============================================
 
 // Get maintenance settings
-router.get('/maintenance', requireAuth, async (req, res) => {
+router.get('/maintenance', requirePermission(PERMISSIONS.SETTINGS_SYSTEM), async (req, res) => {
   try {
     let settings = await prisma.maintenanceMode.findFirst();
 
@@ -128,7 +109,7 @@ router.get('/maintenance', requireAuth, async (req, res) => {
 });
 
 // Update maintenance settings
-router.put('/maintenance', requireAuth, async (req, res) => {
+router.put('/maintenance', requirePermission(PERMISSIONS.SETTINGS_SYSTEM), async (req, res) => {
   try {
     const { isEnabled, title, messageAr, messageEn, startTime, endTime, allowedIPs } = req.body;
 
@@ -178,7 +159,7 @@ router.put('/maintenance', requireAuth, async (req, res) => {
 // ============================================
 
 // Get revenue goals
-router.get('/revenue-goals', requireAuth, async (req, res) => {
+router.get('/revenue-goals', requirePermission(PERMISSIONS.REVENUE_READ), async (req, res) => {
   try {
     const { year, month } = req.query;
 
@@ -200,7 +181,7 @@ router.get('/revenue-goals', requireAuth, async (req, res) => {
 });
 
 // Create/Update revenue goal
-router.post('/revenue-goals', requireAuth, async (req, res) => {
+router.post('/revenue-goals', requirePermission(PERMISSIONS.REVENUE_UPDATE), async (req, res) => {
   try {
     const { year, month, targetRevenue, targetPageviews, targetRPM, notes } = req.body;
 
@@ -239,7 +220,7 @@ router.post('/revenue-goals', requireAuth, async (req, res) => {
 });
 
 // Get revenue projections
-router.get('/revenue-projections', requireAuth, async (req, res) => {
+router.get('/revenue-projections', requirePermission(PERMISSIONS.REVENUE_READ), async (req, res) => {
   try {
     const projections = await prisma.revenueProjection.findMany({
       where: {
@@ -259,7 +240,7 @@ router.get('/revenue-projections', requireAuth, async (req, res) => {
 });
 
 // Generate revenue projection
-router.post('/revenue-projections/generate', requireAuth, async (req, res) => {
+router.post('/revenue-projections/generate', requirePermission(PERMISSIONS.REVENUE_UPDATE), async (req, res) => {
   try {
     // Simple projection algorithm
     const now = new Date();

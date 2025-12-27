@@ -19,9 +19,9 @@ function readConsent() {
   return { analytics: false, ads: false };
 }
 
-function injectScript(src, attrs = {}) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src=\"${src}\"]`)) return resolve();
+function injectScript(src: string, attrs: Record<string, string> = {}) {
+  return new Promise<void>((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
     const s = document.createElement('script');
     s.src = src;
     s.async = true;
@@ -42,13 +42,13 @@ export async function initAnalytics() {
   if (consent.analytics && GA_ID) {
     try {
       // gtag snippet
-      if (!window.dataLayer) window.dataLayer = [];
-      function gtag(){window.dataLayer.push(arguments);} // eslint-disable-line no-inner-declarations
-      window.gtag = window.gtag || gtag;
+      if (!(window as any).dataLayer) (window as any).dataLayer = [];
+      function gtag(){(window as any).dataLayer.push(arguments);} // eslint-disable-line no-inner-declarations
+      (window as any).gtag = (window as any).gtag || gtag;
       await injectScript(`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`);
-      window.gtag('js', new Date());
-      window.gtag('config', GA_ID, { anonymize_ip: true });
-    } catch (e) {
+      (window as any).gtag('js', new Date());
+      (window as any).gtag('config', GA_ID, { anonymize_ip: true });
+    } catch (e: any) {
       console.warn('Failed to load GA', e && e.message);
     }
   }
@@ -58,11 +58,18 @@ export async function initAnalytics() {
     try {
       await injectScript('https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js', { 'data-ad-client': ADSENSE_ID });
       // push adsbygoogle enable
-      try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) {}
-    } catch (e) {
+      try { ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({}); } catch (e) {}
+    } catch (e: any) {
       console.warn('Failed to load AdSense', e && e.message);
     }
   }
+}
+
+// Listen for consent changes to re-initialize
+if (typeof window !== 'undefined') {
+  window.addEventListener('calcu_consent_changed', () => {
+    initAnalytics();
+  });
 }
 
 export function hasAnalyticsConsent() {
@@ -126,6 +133,7 @@ export function getPersistedUTMParams(): UTMParams {
 
 export function getSessionId(): string {
   try {
+    if (typeof sessionStorage === 'undefined') return 'sess_server';
     let sid = sessionStorage.getItem('calcu_session');
     if (!sid) {
       sid = 'sess_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -157,6 +165,9 @@ export function getLocale(): string {
 const API_BASE = '/api/analytics';
 
 export async function trackPageView(pagePath?: string): Promise<void> {
+  const consent = readConsent();
+  if (!consent.analytics) return;
+
   const path = pagePath || (typeof window !== 'undefined' ? window.location.pathname : '/');
   const utm = getPersistedUTMParams();
   
@@ -178,12 +189,35 @@ export async function trackPageView(pagePath?: string): Promise<void> {
   }
 }
 
+export async function trackEvent(eventKey: string, properties: any = {}) {
+  const consent = readConsent();
+  if (!consent.analytics) return;
+
+  try {
+    await fetch(`${API_BASE}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: getSessionId(),
+        eventKey,
+        properties,
+        pagePath: typeof window !== 'undefined' ? window.location.pathname : '/',
+      }),
+    });
+  } catch (e) {
+    console.error('Failed to track event', e);
+  }
+}
+
 export async function trackCalculation(
   calculatorType: string,
   inputSummary: string,
   resultSummary: string,
   durationMs: number = 0
 ): Promise<void> {
+  const consent = readConsent();
+  if (!consent.analytics) return;
+
   const utm = getPersistedUTMParams();
   
   try {
@@ -211,6 +245,9 @@ export async function trackAdEvent(
   eventType: 'IMPRESSION' | 'CLICK',
   pagePath?: string
 ): Promise<void> {
+  const consent = readConsent();
+  if (!consent.ads) return;
+
   const path = pagePath || (typeof window !== 'undefined' ? window.location.pathname : '/');
   
   try {
@@ -246,6 +283,8 @@ export default {
   getDeviceType,
   getLocale,
   trackPageView,
+  trackEvent,
   trackCalculation,
   trackAdEvent,
 };
+

@@ -1,12 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense, useMemo } from 'react';
+import { AdminDataTable, ColumnDef } from '../components/AdminDataTable';
+
+// Lazy load editor to reduce initial bundle size
+const ContentEditor = React.lazy(() => import('./ContentEditor'));
+const CmsPagesPanel = React.lazy(() => import('./CmsPagesPanel'));
 
 interface StaticPage {
   id: string;
   slug: string;
-  titleAr: string;
-  titleEn: string;
-  contentAr: string;
-  contentEn: string;
+  locale: string;
+  title: string;
+  titleAr?: string;
+  titleEn?: string;
+  bodyMarkdown: string;
   isPublished: boolean;
   updatedAt: string;
 }
@@ -14,11 +20,12 @@ interface StaticPage {
 interface BlogPost {
   id: string;
   slug: string;
+  title: string;
   titleAr: string;
   titleEn: string;
   excerptAr: string;
   excerptEn: string;
-  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  isPublished: boolean;
   authorId: string;
   publishedAt: string | null;
   updatedAt: string;
@@ -35,27 +42,49 @@ interface FAQ {
   isActive: boolean;
 }
 
-type ContentType = 'pages' | 'blog' | 'faq';
+type ContentType = 'pages' | 'blog' | 'faq' | 'cms-pages';
 
 export default function ContentPanel() {
-  const [activeTab, setActiveTab] = useState<ContentType>('pages');
+  const [activeTab, setActiveTab] = useState<ContentType>('cms-pages');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    performance.mark('Content-render');
+    console.log('[Perf] ContentPanel mounted/rendered');
+  }, []);
 
   // Data states
   const [pages, setPages] = useState<StaticPage[]>([]);
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+
+  // Query params state
+  const [params, setParams] = useState({
+    page: 1,
+    limit: 10,
+    search: '',
+    sortBy: '',
+    sortOrder: 'asc' as 'asc' | 'desc',
+    includeDeleted: false
+  });
 
   // Editor states
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
 
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, params]);
 
   const fetchData = async () => {
+    if (activeTab === 'cms-pages') {
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     setError('');
 
@@ -63,31 +92,64 @@ export default function ContentPanel() {
       let endpoint = '';
       switch (activeTab) {
         case 'pages':
-          endpoint = '/api/content/pages';
+          endpoint = '/api/admin/content/pages';
           break;
         case 'blog':
-          endpoint = '/api/content/blog';
+          endpoint = '/api/admin/content/blog';
           break;
         case 'faq':
-          endpoint = '/api/content/faq';
+          endpoint = '/api/admin/content/faqs';
           break;
       }
 
-      const response = await fetch(endpoint, { credentials: 'include' });
+      if (!endpoint) {
+        setLoading(false);
+        return;
+      }
+
+      const query = new URLSearchParams({
+        page: String(params.page),
+        limit: String(params.limit),
+        search: params.search,
+        sortBy: params.sortBy,
+        sortOrder: params.sortOrder,
+        includeDeleted: String(params.includeDeleted)
+      }).toString();
+
+      const response = await fetch(`${endpoint}?${query}`, { credentials: 'include' });
       const data = await response.json();
 
       if (response.ok) {
         switch (activeTab) {
           case 'pages':
             setPages(data.pages || []);
+            setTotalItems(data.pagination?.total || 0);
             break;
           case 'blog':
             setBlogPosts(data.posts || []);
+            setTotalItems(data.pagination?.total || 0);
             break;
           case 'faq':
             setFaqs(data.faqs || []);
+            setTotalItems(data.pagination?.total || 0);
             break;
         }
+        performance.mark('Content-data-loaded');
+        
+        // Measure total time
+        try {
+          const navStart = performance.getEntriesByName('nav-start-content').pop();
+          const loadEnd = performance.getEntriesByName('Content-loaded').pop();
+          const renderStart = performance.getEntriesByName('Content-render').pop();
+          const dataEnd = performance.getEntriesByName('Content-data-loaded').pop();
+
+          if (navStart && dataEnd) {
+             console.log(`[Perf] Total Content Transition: ${(dataEnd.startTime - navStart.startTime).toFixed(2)}ms`);
+             if (loadEnd) console.log(`[Perf]  - Module Load: ${(loadEnd.startTime - navStart.startTime).toFixed(2)}ms`);
+             if (renderStart && loadEnd) console.log(`[Perf]  - Render Delay: ${(renderStart.startTime - loadEnd.startTime).toFixed(2)}ms`);
+             if (renderStart) console.log(`[Perf]  - Data Fetch: ${(dataEnd.startTime - renderStart.startTime).toFixed(2)}ms`);
+          }
+        } catch (e) { console.error(e); }
       } else {
         setError(data.error || 'Failed to fetch data');
       }
@@ -98,6 +160,22 @@ export default function ContentPanel() {
     }
   };
 
+  const handleParamsChange = (newParams: any) => {
+    setParams(prev => ({ ...prev, ...newParams }));
+  };
+
+  const handleTabChange = (tab: ContentType) => {
+    setActiveTab(tab);
+    setParams({
+      page: 1,
+      limit: 10,
+      search: '',
+      sortBy: '',
+      sortOrder: 'asc',
+      includeDeleted: false
+    });
+  };
+
   const handleSave = async (item: any) => {
     try {
       let endpoint = '';
@@ -105,13 +183,15 @@ export default function ContentPanel() {
 
       switch (activeTab) {
         case 'pages':
-          endpoint = item.id ? `/api/content/pages/${item.id}` : '/api/content/pages';
+          // Pages use POST for upsert in the current repo implementation
+          endpoint = '/api/admin/content/pages';
+          method = 'POST';
           break;
         case 'blog':
-          endpoint = item.id ? `/api/content/blog/${item.id}` : '/api/content/blog';
+          endpoint = item.id ? `/api/admin/content/blog/${item.id}` : '/api/admin/content/blog';
           break;
         case 'faq':
-          endpoint = item.id ? `/api/content/faq/${item.id}` : '/api/content/faq';
+          endpoint = item.id ? `/api/admin/content/faqs/${item.id}` : '/api/admin/content/faqs';
           break;
       }
 
@@ -142,13 +222,13 @@ export default function ContentPanel() {
       let endpoint = '';
       switch (activeTab) {
         case 'pages':
-          endpoint = `/api/content/pages/${id}`;
+          endpoint = `/api/admin/content/pages/${id}`;
           break;
         case 'blog':
-          endpoint = `/api/content/blog/${id}`;
+          endpoint = `/api/admin/content/blog/${id}`;
           break;
         case 'faq':
-          endpoint = `/api/content/faq/${id}`;
+          endpoint = `/api/admin/content/faqs/${id}`;
           break;
       }
 
@@ -168,11 +248,123 @@ export default function ContentPanel() {
     }
   };
 
+  const handleBulkAction = async (action: string, selectedIds: string[]) => {
+    if (!confirm(`هل أنت متأكد من تنفيذ "${action}" على ${selectedIds.length} عنصر؟`)) return;
+    
+    try {
+      const response = await fetch('/api/admin/content/bulk-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: activeTab, action, ids: selectedIds }),
+      });
+      
+      if (response.ok) {
+        fetchData();
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Bulk action failed');
+      }
+    } catch (e) {
+      alert('Error performing bulk action');
+    }
+  };
+
+  const handleClone = async (item: any) => {
+     try {
+      let endpoint = '';
+      switch (activeTab) {
+        case 'blog': endpoint = `/api/admin/content/blog/${item.id}/clone`; break;
+        case 'faq': endpoint = `/api/admin/content/faqs/${item.id}/clone`; break;
+        default: return alert('Clone not supported for this type');
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+      });
+      if (response.ok) {
+        fetchData();
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Clone failed');
+      }
+     } catch (e) {
+       alert('Error cloning item');
+     }
+  };
+
   const tabs = [
+    { key: 'cms-pages' as const, label: 'صفحات الحاسبات (CMS)', icon: '🧮' },
     { key: 'pages' as const, label: 'الصفحات الثابتة', icon: '📄' },
     { key: 'blog' as const, label: 'المدونة', icon: '📝' },
     { key: 'faq' as const, label: 'الأسئلة الشائعة', icon: '❓' },
   ];
+
+  // Column Definitions
+  const pageColumns: ColumnDef<StaticPage>[] = useMemo(() => [
+    { 
+      key: 'title', 
+      header: 'العنوان', 
+      sortable: true, 
+      render: (val, item) => val || item.titleAr || item.titleEn || 'بدون عنوان' 
+    },
+    { key: 'slug', header: 'المسار', sortable: true, render: (val) => <span dir="ltr">/{val}</span> },
+    { key: 'locale', header: 'اللغة', sortable: true, render: (val) => val === 'ar' ? 'العربية' : 'English' },
+    { key: 'isPublished', header: 'الحالة', sortable: true, render: (val) => (
+      <span className={`px-2 py-1 text-xs rounded-full ${val ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+        {val ? 'منشور' : 'مسودة'}
+      </span>
+    )},
+    { key: 'updatedAt', header: 'آخر تحديث', sortable: true, render: (val) => new Date(val).toLocaleDateString('ar-SA') },
+    { key: 'id', header: 'رابط', render: (_, item) => (
+      <a 
+        href={item.slug === 'home' ? '/' : `/p/${item.slug}`} 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="text-blue-600 hover:underline flex items-center gap-1"
+      >
+        <span>عرض</span>
+        <span className="text-[10px]">↗</span>
+      </a>
+    )}
+  ], []);
+
+  const blogColumns: ColumnDef<BlogPost>[] = useMemo(() => [
+    { 
+      key: 'title', 
+      header: 'العنوان', 
+      sortable: true, 
+      render: (val, item) => val || item.titleAr || item.titleEn || 'بدون عنوان' 
+    },
+    { key: 'slug', header: 'المسار', sortable: true, render: (val) => <span dir="ltr">/blog/{val}</span> },
+    { key: 'isPublished', header: 'الحالة', sortable: true, render: (val) => (
+       <span className={`px-2 py-1 text-xs rounded-full ${val ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+         {val ? 'منشور' : 'مسودة'}
+       </span>
+    )},
+    { key: 'publishedAt', header: 'تاريخ النشر', sortable: true, render: (val) => val ? new Date(val).toLocaleDateString('ar-SA') : '-' },
+    { key: 'id', header: 'رابط', render: (_, item) => (
+      <a 
+        href={`/blog/${item.slug}`} 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="text-blue-600 hover:underline flex items-center gap-1"
+      >
+        <span>عرض</span>
+        <span className="text-[10px]">↗</span>
+      </a>
+    )}
+  ], []);
+
+  const faqColumns: ColumnDef<FAQ>[] = useMemo(() => [
+    { key: 'questionAr', header: 'السؤال', sortable: true, render: (val, item) => val || item.questionEn || 'بدون سؤال' },
+    { key: 'category', header: 'التصنيف', sortable: true },
+    { key: 'isPublished', header: 'الحالة', sortable: true, render: (val) => (
+      <span className={`px-2 py-1 text-xs rounded-full ${val ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+        {val ? 'منشور' : 'مسودة'}
+      </span>
+    )},
+    { key: 'sortOrder', header: 'الترتيب', sortable: true },
+  ], []);
 
   return (
     <div className="space-y-6">
@@ -181,7 +373,7 @@ export default function ContentPanel() {
         {tabs.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => handleTabChange(tab.key)}
             className={`flex items-center gap-2 px-4 py-3 border-b-2 transition ${
               activeTab === tab.key
                 ? 'border-blue-500 text-blue-600'
@@ -196,9 +388,29 @@ export default function ContentPanel() {
 
       {/* Action Bar */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-800">
-          {tabs.find((t) => t.key === activeTab)?.label}
-        </h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-semibold text-slate-800">
+            {tabs.find((t) => t.key === activeTab)?.label}
+          </h2>
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={params.includeDeleted}
+              onChange={(e) => handleParamsChange({ includeDeleted: e.target.checked, page: 1 })}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            عرض المحذوفات
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={debugMode}
+              onChange={(e) => setDebugMode(e.target.checked)}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            وضع التصحيح (Debug)
+          </label>
+        </div>
         <button
           onClick={() => {
             setEditingItem(null);
@@ -227,36 +439,62 @@ export default function ContentPanel() {
       {/* Content Lists */}
       {!loading && !error && (
         <>
+          {debugMode && (
+            <div className="bg-slate-900 text-green-400 p-4 rounded-lg overflow-auto max-h-64 text-xs font-mono mb-4">
+              <pre>{JSON.stringify({ activeTab, totalItems, data: activeTab === 'pages' ? pages : activeTab === 'blog' ? blogPosts : faqs }, null, 2)}</pre>
+            </div>
+          )}
+          
+          {activeTab === 'cms-pages' && (
+            <Suspense fallback={<div>Loading CMS...</div>}>
+              <CmsPagesPanel />
+            </Suspense>
+          )}
+
           {activeTab === 'pages' && (
-            <PagesTable
-              pages={pages}
-              onEdit={(page) => {
-                setEditingItem(page);
-                setIsEditorOpen(true);
+            <AdminDataTable
+              columns={pageColumns}
+              data={pages}
+              serverSide
+              totalItems={totalItems}
+              onParamsChange={handleParamsChange}
+              onRowAction={(action, item) => {
+                if (action === 'edit') { setEditingItem(item); setIsEditorOpen(true); }
+                if (action === 'delete') handleDelete(item.id);
               }}
-              onDelete={handleDelete}
+              onBulkAction={handleBulkAction}
             />
           )}
 
           {activeTab === 'blog' && (
-            <BlogTable
-              posts={blogPosts}
-              onEdit={(post) => {
-                setEditingItem(post);
-                setIsEditorOpen(true);
+            <AdminDataTable
+              columns={blogColumns}
+              data={blogPosts}
+              serverSide
+              totalItems={totalItems}
+              onParamsChange={handleParamsChange}
+              onRowAction={(action, item) => {
+                if (action === 'edit') { setEditingItem(item); setIsEditorOpen(true); }
+                if (action === 'delete') handleDelete(item.id);
+                if (action === 'clone') handleClone(item);
               }}
-              onDelete={handleDelete}
+              onBulkAction={handleBulkAction}
             />
           )}
 
           {activeTab === 'faq' && (
-            <FAQTable
-              faqs={faqs}
-              onEdit={(faq) => {
-                setEditingItem(faq);
-                setIsEditorOpen(true);
+            <AdminDataTable
+              columns={faqColumns}
+              data={faqs}
+              serverSide
+              totalItems={totalItems}
+              onParamsChange={handleParamsChange}
+              onRowAction={(action, item) => {
+                if (action === 'edit') { setEditingItem(item); setIsEditorOpen(true); }
+                if (action === 'delete') handleDelete(item.id);
+                if (action === 'clone') handleClone(item);
               }}
-              onDelete={handleDelete}
+              onBulkAction={handleBulkAction}
             />
           )}
         </>
@@ -264,585 +502,20 @@ export default function ContentPanel() {
 
       {/* Editor Modal */}
       {isEditorOpen && (
-        <EditorModal
-          type={activeTab}
-          item={editingItem}
-          onSave={handleSave}
-          onClose={() => {
-            setIsEditorOpen(false);
-            setEditingItem(null);
-          }}
-        />
+        <Suspense fallback={<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white p-8 rounded-lg shadow-xl">Loading Editor...</div></div>}>
+          <ContentEditor
+            type={activeTab}
+            item={editingItem}
+            onSave={handleSave}
+            onClose={() => {
+              setIsEditorOpen(false);
+              setEditingItem(null);
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );
 }
 
-// Pages Table Component
-function PagesTable({
-  pages,
-  onEdit,
-  onDelete,
-}: {
-  pages: StaticPage[];
-  onEdit: (page: StaticPage) => void;
-  onDelete: (id: string) => void;
-}) {
-  if (pages.length === 0) {
-    return (
-      <div className="bg-slate-50 rounded-lg p-8 text-center text-slate-600">
-        لا توجد صفحات. قم بإضافة صفحة جديدة.
-      </div>
-    );
-  }
 
-  return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      <table className="w-full">
-        <thead className="bg-slate-50">
-          <tr>
-            <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">العنوان</th>
-            <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">المسار</th>
-            <th className="px-4 py-3 text-center text-sm font-medium text-slate-600">الحالة</th>
-            <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">آخر تحديث</th>
-            <th className="px-4 py-3 text-center text-sm font-medium text-slate-600">إجراءات</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {pages.map((page) => (
-            <tr key={page.id} className="hover:bg-slate-50">
-              <td className="px-4 py-3 text-sm">{page.titleAr || page.titleEn}</td>
-              <td className="px-4 py-3 text-sm text-slate-600" dir="ltr">
-                /{page.slug}
-              </td>
-              <td className="px-4 py-3 text-center">
-                <span
-                  className={`px-2 py-1 text-xs rounded-full ${
-                    page.isPublished
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {page.isPublished ? 'منشور' : 'مسودة'}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-sm text-slate-600">
-                {new Date(page.updatedAt).toLocaleDateString('ar-SA')}
-              </td>
-              <td className="px-4 py-3 text-center">
-                <button
-                  onClick={() => onEdit(page)}
-                  className="text-blue-600 hover:text-blue-800 mx-1"
-                  title="تعديل"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => onDelete(page.id)}
-                  className="text-red-600 hover:text-red-800 mx-1"
-                  title="حذف"
-                >
-                  🗑️
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// Blog Table Component
-function BlogTable({
-  posts,
-  onEdit,
-  onDelete,
-}: {
-  posts: BlogPost[];
-  onEdit: (post: BlogPost) => void;
-  onDelete: (id: string) => void;
-}) {
-  const statusLabels = {
-    DRAFT: { label: 'مسودة', class: 'bg-slate-100 text-slate-600' },
-    PUBLISHED: { label: 'منشور', class: 'bg-green-100 text-green-700' },
-    ARCHIVED: { label: 'مؤرشف', class: 'bg-yellow-100 text-yellow-700' },
-  };
-
-  if (posts.length === 0) {
-    return (
-      <div className="bg-slate-50 rounded-lg p-8 text-center text-slate-600">
-        لا توجد مقالات. قم بإضافة مقالة جديدة.
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      <table className="w-full">
-        <thead className="bg-slate-50">
-          <tr>
-            <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">العنوان</th>
-            <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">المسار</th>
-            <th className="px-4 py-3 text-center text-sm font-medium text-slate-600">الحالة</th>
-            <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">تاريخ النشر</th>
-            <th className="px-4 py-3 text-center text-sm font-medium text-slate-600">إجراءات</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {posts.map((post) => (
-            <tr key={post.id} className="hover:bg-slate-50">
-              <td className="px-4 py-3 text-sm">{post.titleAr || post.titleEn}</td>
-              <td className="px-4 py-3 text-sm text-slate-600" dir="ltr">
-                /blog/{post.slug}
-              </td>
-              <td className="px-4 py-3 text-center">
-                <span className={`px-2 py-1 text-xs rounded-full ${statusLabels[post.status].class}`}>
-                  {statusLabels[post.status].label}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-sm text-slate-600">
-                {post.publishedAt
-                  ? new Date(post.publishedAt).toLocaleDateString('ar-SA')
-                  : '-'}
-              </td>
-              <td className="px-4 py-3 text-center">
-                <button
-                  onClick={() => onEdit(post)}
-                  className="text-blue-600 hover:text-blue-800 mx-1"
-                  title="تعديل"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => onDelete(post.id)}
-                  className="text-red-600 hover:text-red-800 mx-1"
-                  title="حذف"
-                >
-                  🗑️
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// FAQ Table Component
-function FAQTable({
-  faqs,
-  onEdit,
-  onDelete,
-}: {
-  faqs: FAQ[];
-  onEdit: (faq: FAQ) => void;
-  onDelete: (id: string) => void;
-}) {
-  if (faqs.length === 0) {
-    return (
-      <div className="bg-slate-50 rounded-lg p-8 text-center text-slate-600">
-        لا توجد أسئلة شائعة. قم بإضافة سؤال جديد.
-      </div>
-    );
-  }
-
-  // Group by category
-  const grouped = faqs.reduce((acc, faq) => {
-    const cat = faq.category || 'عام';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(faq);
-    return acc;
-  }, {} as Record<string, FAQ[]>);
-
-  return (
-    <div className="space-y-4">
-      {Object.entries(grouped).map(([category, categoryFaqs]) => (
-        <div key={category} className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="bg-slate-50 px-4 py-2 font-medium text-slate-700">{category}</div>
-          <div className="divide-y divide-slate-100">
-            {categoryFaqs
-              .sort((a, b) => a.order - b.order)
-              .map((faq) => (
-                <div key={faq.id} className="p-4 hover:bg-slate-50">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="font-medium text-slate-800">{faq.questionAr || faq.questionEn}</p>
-                      <p className="text-sm text-slate-600 mt-1 line-clamp-2">
-                        {faq.answerAr || faq.answerEn}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 mr-4">
-                      <span
-                        className={`px-2 py-1 text-xs rounded-full ${
-                          faq.isActive
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {faq.isActive ? 'نشط' : 'معطل'}
-                      </span>
-                      <button
-                        onClick={() => onEdit(faq)}
-                        className="text-blue-600 hover:text-blue-800"
-                        title="تعديل"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        onClick={() => onDelete(faq.id)}
-                        className="text-red-600 hover:text-red-800"
-                        title="حذف"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Editor Modal Component
-function EditorModal({
-  type,
-  item,
-  onSave,
-  onClose,
-}: {
-  type: ContentType;
-  item: any;
-  onSave: (item: any) => void;
-  onClose: () => void;
-}) {
-  const [formData, setFormData] = useState<any>(
-    item || getDefaultFormData(type)
-  );
-
-  function getDefaultFormData(contentType: ContentType) {
-    switch (contentType) {
-      case 'pages':
-        return {
-          slug: '',
-          titleAr: '',
-          titleEn: '',
-          contentAr: '',
-          contentEn: '',
-          isPublished: false,
-        };
-      case 'blog':
-        return {
-          slug: '',
-          titleAr: '',
-          titleEn: '',
-          excerptAr: '',
-          excerptEn: '',
-          contentAr: '',
-          contentEn: '',
-          status: 'DRAFT',
-        };
-      case 'faq':
-        return {
-          questionAr: '',
-          questionEn: '',
-          answerAr: '',
-          answerEn: '',
-          category: 'عام',
-          order: 0,
-          isActive: true,
-        };
-    }
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-auto">
-        <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">
-            {item ? 'تعديل' : 'إضافة'}{' '}
-            {type === 'pages' ? 'صفحة' : type === 'blog' ? 'مقالة' : 'سؤال'}
-          </h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-700">
-            ✕
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {type === 'pages' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">المسار (Slug)</label>
-                <input
-                  type="text"
-                  value={formData.slug}
-                  onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
-                  placeholder="about-us"
-                  dir="ltr"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">العنوان (عربي)</label>
-                  <input
-                    type="text"
-                    value={formData.titleAr}
-                    onChange={(e) => setFormData({ ...formData, titleAr: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">العنوان (إنجليزي)</label>
-                  <input
-                    type="text"
-                    value={formData.titleEn}
-                    onChange={(e) => setFormData({ ...formData, titleEn: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    dir="ltr"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">المحتوى (عربي)</label>
-                <textarea
-                  value={formData.contentAr}
-                  onChange={(e) => setFormData({ ...formData, contentAr: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg h-40"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">المحتوى (إنجليزي)</label>
-                <textarea
-                  value={formData.contentEn}
-                  onChange={(e) => setFormData({ ...formData, contentEn: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg h-40"
-                  dir="ltr"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isPublished"
-                  checked={formData.isPublished}
-                  onChange={(e) => setFormData({ ...formData, isPublished: e.target.checked })}
-                  className="rounded"
-                />
-                <label htmlFor="isPublished" className="text-sm text-slate-700">
-                  نشر الصفحة
-                </label>
-              </div>
-            </>
-          )}
-
-          {type === 'blog' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">المسار (Slug)</label>
-                <input
-                  type="text"
-                  value={formData.slug}
-                  onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
-                  placeholder="my-article"
-                  dir="ltr"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">العنوان (عربي)</label>
-                  <input
-                    type="text"
-                    value={formData.titleAr}
-                    onChange={(e) => setFormData({ ...formData, titleAr: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">العنوان (إنجليزي)</label>
-                  <input
-                    type="text"
-                    value={formData.titleEn}
-                    onChange={(e) => setFormData({ ...formData, titleEn: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    dir="ltr"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">ملخص (عربي)</label>
-                  <textarea
-                    value={formData.excerptAr}
-                    onChange={(e) => setFormData({ ...formData, excerptAr: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg h-20"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">ملخص (إنجليزي)</label>
-                  <textarea
-                    value={formData.excerptEn}
-                    onChange={(e) => setFormData({ ...formData, excerptEn: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg h-20"
-                    dir="ltr"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">المحتوى (عربي) - Markdown</label>
-                  <textarea
-                    value={formData.bodyMarkdownAr || formData.contentAr || ''}
-                    onChange={(e) => setFormData({ ...formData, bodyMarkdownAr: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg h-40 font-mono text-sm"
-                    placeholder="يمكنك استخدام Markdown للتنسيق..."
-                    required
-                  />
-                  <p className="text-xs text-slate-500 mt-1">يدعم Markdown: ## عنوان، * قائمة، [نص](رابط)</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">المحتوى (إنجليزي) - Markdown</label>
-                  <textarea
-                    value={formData.bodyMarkdownEn || formData.contentEn || ''}
-                    onChange={(e) => setFormData({ ...formData, bodyMarkdownEn: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg h-40 font-mono text-sm"
-                    placeholder="You can use Markdown for formatting..."
-                    dir="ltr"
-                  />
-                  <p className="text-xs text-slate-500 mt-1" dir="ltr">Supports Markdown: ## heading, * list, [text](url)</p>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">الحالة</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
-                  title="اختر حالة المقالة"
-                >
-                  <option value="DRAFT">مسودة</option>
-                  <option value="PUBLISHED">منشور</option>
-                  <option value="ARCHIVED">مؤرشف</option>
-                </select>
-              </div>
-            </>
-          )}
-
-          {type === 'faq' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">السؤال (عربي)</label>
-                <input
-                  type="text"
-                  value={formData.questionAr}
-                  onChange={(e) => setFormData({ ...formData, questionAr: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">السؤال (إنجليزي)</label>
-                <input
-                  type="text"
-                  value={formData.questionEn}
-                  onChange={(e) => setFormData({ ...formData, questionEn: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
-                  dir="ltr"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">الإجابة (عربي)</label>
-                <textarea
-                  value={formData.answerAr}
-                  onChange={(e) => setFormData({ ...formData, answerAr: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg h-32"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">الإجابة (إنجليزي)</label>
-                <textarea
-                  value={formData.answerEn}
-                  onChange={(e) => setFormData({ ...formData, answerEn: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg h-32"
-                  dir="ltr"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">التصنيف</label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    title="FAQ Category"
-                  >
-                    <option value="عام">عام (General)</option>
-                    <option value="pay">💰 حاسبة الراتب (Salary Calculator)</option>
-                    <option value="eos">🏆 نهاية الخدمة (End of Service)</option>
-                    <option value="work">⏰ ساعات العمل (Work Hours)</option>
-                    <option value="dates">📅 التواريخ (Date Calculator)</option>
-                    <option value="gosi">🏛️ التأمينات (GOSI)</option>
-                    <option value="labor-law">⚖️ نظام العمل (Labor Law)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">الترتيب</label>
-                  <input
-                    type="number"
-                    value={formData.order}
-                    onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    min={0}
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isActive"
-                  checked={formData.isActive}
-                  onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                  className="rounded"
-                />
-                <label htmlFor="isActive" className="text-sm text-slate-700">
-                  نشط
-                </label>
-              </div>
-            </>
-          )}
-
-          <div className="flex items-center justify-end gap-3 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-slate-600 hover:text-slate-800"
-            >
-              إلغاء
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              حفظ
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}

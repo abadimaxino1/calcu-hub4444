@@ -1,30 +1,45 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement,
-} from 'chart.js';
-import { Line, Bar, Doughnut } from 'react-chartjs-2';
+import { useMinLoadingTime } from '../lib/hooks';
+import { MonetizationSkeleton } from '../components/AdminSkeletons';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement
+// Lazy load charts to reduce initial bundle size
+const LazyLine = React.lazy(() => import('../components/AdminCharts').then(m => ({ default: m.Line })));
+const LazyBar = React.lazy(() => import('../components/AdminCharts').then(m => ({ default: m.Bar })));
+const LazyDoughnut = React.lazy(() => import('../components/AdminCharts').then(m => ({ default: m.Doughnut })));
+
+const ChartLoader = () => (
+  <div className="w-full h-full min-h-[200px] flex items-center justify-center bg-gray-50 dark:bg-gray-800/50 rounded-lg text-gray-400 text-sm animate-pulse">
+    Loading Chart...
+  </div>
 );
+
+const Line = (props: any) => (
+  <Suspense fallback={<ChartLoader />}>
+    <LazyLine {...props} />
+  </Suspense>
+);
+
+const Bar = (props: any) => (
+  <Suspense fallback={<ChartLoader />}>
+    <LazyBar {...props} />
+  </Suspense>
+);
+
+const Doughnut = (props: any) => (
+  <Suspense fallback={<ChartLoader />}>
+    <LazyDoughnut {...props} />
+  </Suspense>
+);
+
+// Helper to safely parse numbers
+const toNum = (val: unknown): number => {
+  if (typeof val === 'number') return val;
+  if (!val) return 0;
+  const str = String(val).replace(/,/g, '');
+  const parsed = parseFloat(str);
+  return isNaN(parsed) ? 0 : parsed;
+};
 
 // Types
 interface MonetizationSummary {
@@ -72,7 +87,7 @@ interface PageData {
   adImpressions: number;
   adClicks: number;
   ctr: string;
-  estimatedRevenue: string;
+  estimatedRevenue: number;
   revenuePerView: string;
 }
 
@@ -185,7 +200,8 @@ export default function MonetizationPanel() {
     return d.toISOString().slice(0, 10);
   });
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const showLoading = useMinLoadingTime(loading);
   const [error, setError] = useState<string | null>(null);
 
   // Data states
@@ -383,7 +399,7 @@ export default function MonetizationPanel() {
       datasets: [
         {
           label: 'Estimated Revenue (SAR)',
-          data: overTimeData.map(d => parseFloat(d.estimatedRevenue)),
+          data: overTimeData.map(d => toNum(d.estimatedRevenue)),
           borderColor: chartColors.primary,
           backgroundColor: 'rgba(59, 130, 246, 0.1)',
           fill: true,
@@ -397,13 +413,13 @@ export default function MonetizationPanel() {
       datasets: [
         {
           label: 'Impressions',
-          data: overTimeData.map(d => d.impressions),
+          data: overTimeData.map(d => toNum(d.impressions)),
           backgroundColor: chartColors.primary,
           yAxisID: 'y',
         },
         {
           label: 'Clicks',
-          data: overTimeData.map(d => d.clicks),
+          data: overTimeData.map(d => toNum(d.clicks)),
           backgroundColor: chartColors.secondary,
           yAxisID: 'y1',
         },
@@ -415,7 +431,7 @@ export default function MonetizationPanel() {
       datasets: [
         {
           label: 'CTR (%)',
-          data: overTimeData.map(d => parseFloat(d.ctr)),
+          data: overTimeData.map(d => toNum(d.ctr)),
           borderColor: chartColors.accent,
           backgroundColor: 'rgba(249, 115, 22, 0.1)',
           fill: true,
@@ -430,41 +446,41 @@ export default function MonetizationPanel() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <KPICard 
             title="Today's Revenue" 
-            value={`${summary.today.estimatedRevenue} SAR`}
+            value={`${toNum(summary?.today?.estimatedRevenue).toFixed(2)} SAR`}
           />
           <KPICard 
-            title={`${summary.period.days} Day Revenue`}
-            value={`${summary.totals.estimatedRevenue} SAR`}
-            subtitle={`Avg: ${summary.averages.dailyRevenue} SAR/day`}
+            title={`${summary?.period?.days || 0} Day Revenue`}
+            value={`${toNum(summary?.totals?.estimatedRevenue).toFixed(2)} SAR`}
+            subtitle={`Avg: ${toNum(summary?.averages?.dailyRevenue).toFixed(2)} SAR/day`}
           />
           <KPICard 
             title="Impressions"
-            value={summary.totals.impressions.toLocaleString()}
-            subtitle={`${summary.averages.dailyImpressions}/day`}
+            value={toNum(summary?.totals?.impressions).toLocaleString()}
+            subtitle={`${toNum(summary?.averages?.dailyImpressions).toFixed(0)}/day`}
           />
           <KPICard 
             title="Clicks"
-            value={summary.totals.clicks.toLocaleString()}
-            subtitle={`${summary.averages.dailyClicks}/day`}
+            value={toNum(summary?.totals?.clicks).toLocaleString()}
+            subtitle={`${toNum(summary?.averages?.dailyClicks).toFixed(0)}/day`}
           />
           <KPICard 
             title="CTR"
-            value={`${summary.totals.ctr}%`}
+            value={`${toNum(summary?.totals?.ctr).toFixed(2)}%`}
           />
           <KPICard 
             title="RPM"
-            value={`${summary.totals.rpm} SAR`}
+            value={`${toNum(summary?.totals?.rpm).toFixed(2)} SAR`}
           />
         </div>
 
         {/* Variance Card */}
-        {parseFloat(summary.totals.actualRevenue) > 0 && (
+        {toNum(summary?.totals?.actualRevenue) > 0 && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
             <div className="flex items-center gap-2">
               <span className="text-yellow-600">⚡</span>
               <span className="font-medium">Estimated vs Actual Variance:</span>
-              <span className={parseFloat(summary.totals.variance) >= 0 ? 'text-green-600' : 'text-red-600'}>
-                {summary.totals.variance} SAR ({summary.totals.variancePercent}%)
+              <span className={toNum(summary?.totals?.variance) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                {toNum(summary?.totals?.variance).toFixed(2)} SAR ({toNum(summary?.totals?.variancePercent).toFixed(1)}%)
               </span>
             </div>
           </div>
@@ -526,7 +542,7 @@ export default function MonetizationPanel() {
     const chartData = {
       labels: slotsData.slice(0, 8).map(s => s.name),
       datasets: [{
-        data: slotsData.slice(0, 8).map(s => parseFloat(s.estimatedRevenue)),
+        data: slotsData.slice(0, 8).map(s => toNum(s.estimatedRevenue)),
         backgroundColor: [
           chartColors.primary, chartColors.secondary, chartColors.accent,
           chartColors.warning, chartColors.danger, '#8b5cf6', '#ec4899', '#6366f1',
@@ -629,7 +645,7 @@ export default function MonetizationPanel() {
                 <td className="px-4 py-3 text-right">{page.adImpressions.toLocaleString()}</td>
                 <td className="px-4 py-3 text-right">{page.adClicks.toLocaleString()}</td>
                 <td className="px-4 py-3 text-right">{page.ctr}%</td>
-                <td className="px-4 py-3 text-right font-medium">{page.estimatedRevenue} SAR</td>
+                <td className="px-4 py-3 text-right font-medium">{toNum(page.estimatedRevenue).toFixed(2)} SAR</td>
                 <td className="px-4 py-3 text-right text-gray-600">{page.revenuePerView}</td>
               </tr>
             ))}
@@ -648,7 +664,7 @@ export default function MonetizationPanel() {
       labels: countriesData.slice(0, 10).map(c => c.country),
       datasets: [{
         label: 'Revenue (SAR)',
-        data: countriesData.slice(0, 10).map(c => parseFloat(c.estimatedRevenue)),
+        data: countriesData.slice(0, 10).map(c => toNum(c.estimatedRevenue)),
         backgroundColor: chartColors.primary,
       }],
     };
@@ -705,7 +721,7 @@ export default function MonetizationPanel() {
     const chartData = {
       labels: devicesData.map(d => d.device),
       datasets: [{
-        data: devicesData.map(d => parseFloat(d.estimatedRevenue)),
+        data: devicesData.map(d => toNum(d.estimatedRevenue)),
         backgroundColor: [chartColors.primary, chartColors.secondary, chartColors.accent],
       }],
     };
@@ -917,7 +933,7 @@ export default function MonetizationPanel() {
       labels: forecast.forecast.daily.map(d => d.date),
       datasets: [{
         label: 'Forecasted Revenue (SAR)',
-        data: forecast.forecast.daily.map(d => parseFloat(d.estimatedRevenue)),
+        data: forecast.forecast.daily.map(d => toNum(d.estimatedRevenue)),
         borderColor: chartColors.secondary,
         backgroundColor: 'rgba(16, 185, 129, 0.1)',
         fill: true,
@@ -930,7 +946,7 @@ export default function MonetizationPanel() {
       labels: forecast.monthlyProjections.map(m => `Month ${m.month}`),
       datasets: [{
         label: 'Monthly Projection (SAR)',
-        data: forecast.monthlyProjections.map(m => parseFloat(m.estimatedRevenue)),
+        data: forecast.monthlyProjections.map(m => toNum(m.estimatedRevenue)),
         backgroundColor: chartColors.primary,
       }],
     };
@@ -1132,15 +1148,14 @@ export default function MonetizationPanel() {
         )}
 
         {/* Loading State */}
-        {loading && (
-          <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-            <p className="mt-2 text-gray-600">Loading...</p>
+        {showLoading && (
+          <div className="p-6">
+            <MonetizationSkeleton />
           </div>
         )}
 
         {/* Tab Content */}
-        {!loading && (
+        {!showLoading && (
           <div className="p-6">
             {activeTab === 'overview' && renderOverview()}
             {activeTab === 'by-slot' && renderBySlot()}

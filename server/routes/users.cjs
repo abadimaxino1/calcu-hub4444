@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const { prisma } = require('../db.cjs');
 const { ROLES, PERMISSIONS, requirePermission, hasPermission } = require('../rbac.cjs');
 
+const { logAudit } = require('../lib/audit.cjs');
+
 const router = express.Router();
 
 // Hash password
@@ -14,20 +16,57 @@ async function hashPassword(password) {
 // List users
 router.get('/', requirePermission(PERMISSIONS.USERS_READ), async (req, res) => {
   try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const { 
+      page = 1, 
+      limit = 10, 
+      search = '', 
+      role, 
+      sortBy = 'createdAt', 
+      sortOrder = 'desc',
+      includeDeleted = 'false'
+    } = req.query;
 
-    return res.json({ users });
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const where = {
+      deletedAt: includeDeleted === 'true' ? undefined : null,
+      role: role || undefined,
+      OR: search ? [
+        { email: { contains: search } },
+        { name: { contains: search } }
+      ] : undefined
+    };
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+          deletedAt: true
+        },
+        orderBy: { [sortBy]: sortOrder },
+        skip,
+        take,
+      }),
+      prisma.user.count({ where })
+    ]);
+
+    return res.json({ 
+      users, 
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / take)
+      }
+    });
   } catch (error) {
     console.error('List users error:', error);
     return res.status(500).json({ error: 'Server error' });
@@ -103,19 +142,16 @@ router.post('/', requirePermission(PERMISSIONS.USERS_CREATE), async (req, res) =
         hashedPassword,
         role: validRole,
         isActive: true,
+        createdById: req.user.id
       },
     });
 
-    // Log activity
-    await prisma.adminActivityLog.create({
-      data: {
-        adminUserId: req.user.id,
-        actionType: 'CREATE_USER',
-        targetType: 'user',
-        targetId: user.id,
-        detailsJson: JSON.stringify({ email: user.email, role: user.role }),
-        ipAddress: req.ip,
-      },
+    await logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'User',
+      entityId: user.id,
+      afterData: user
     });
 
     return res.json({
@@ -140,18 +176,20 @@ router.put('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), async (req, res)
     const { name, email, role, isActive, password } = req.body;
     const userId = req.params.id;
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
+    const before = await prisma.user.findUnique({ where: { id: userId } });
+    if (!before) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     // Prevent non-super-admin from modifying super admin
-    if (user.role === ROLES.SUPER_ADMIN && req.user.role !== ROLES.SUPER_ADMIN) {
+    if (before.role === ROLES.SUPER_ADMIN && req.user.role !== ROLES.SUPER_ADMIN) {
       return res.status(403).json({ error: 'Cannot modify super admin' });
     }
 
     // Build update data
-    const updateData = {};
+    const updateData = {
+      updatedById: req.user.id
+    };
 
     if (name) updateData.name = name;
     if (email) updateData.email = email.toLowerCase();
@@ -170,31 +208,28 @@ router.put('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), async (req, res)
       updateData.hashedPassword = await hashPassword(password);
     }
 
-    const updated = await prisma.user.update({
+    const user = await prisma.user.update({
       where: { id: userId },
       data: updateData,
     });
 
-    // Log activity
-    await prisma.adminActivityLog.create({
-      data: {
-        adminUserId: req.user.id,
-        actionType: 'UPDATE_USER',
-        targetType: 'user',
-        targetId: userId,
-        detailsJson: JSON.stringify({ changes: Object.keys(updateData) }),
-        ipAddress: req.ip,
-      },
+    await logAudit({
+      req,
+      action: 'UPDATE',
+      entityType: 'User',
+      entityId: userId,
+      beforeData: before,
+      afterData: user
     });
 
     return res.json({
       ok: true,
       user: {
-        id: updated.id,
-        email: updated.email,
-        name: updated.name,
-        role: updated.role,
-        isActive: updated.isActive,
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        isActive: user.isActive,
       },
     });
   } catch (error) {
@@ -203,11 +238,77 @@ router.put('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), async (req, res)
   }
 });
 
-// Delete user
+// Soft delete user
 router.delete('/:id', requirePermission(PERMISSIONS.USERS_DELETE), async (req, res) => {
   try {
     const userId = req.params.id;
+    const before = await prisma.user.findUnique({ where: { id: userId } });
+    
+    if (!before) return res.status(404).json({ error: 'User not found' });
+    if (before.role === ROLES.SUPER_ADMIN) return res.status(403).json({ error: 'Cannot delete super admin' });
+    if (before.id === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
 
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { 
+        deletedAt: new Date(),
+        deletedById: req.user.id,
+        isActive: false
+      }
+    });
+
+    await logAudit({
+      req,
+      action: 'DELETE',
+      entityType: 'User',
+      entityId: userId,
+      beforeData: before,
+      afterData: user
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Restore user
+router.post('/:id/restore', requirePermission(PERMISSIONS.USERS_UPDATE), async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const before = await prisma.user.findUnique({ where: { id: userId } });
+    
+    if (!before) return res.status(404).json({ error: 'User not found' });
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { 
+        deletedAt: null,
+        deletedById: null,
+        isActive: true
+      }
+    });
+
+    await logAudit({
+      req,
+      action: 'RESTORE',
+      entityType: 'User',
+      entityId: userId,
+      beforeData: before,
+      afterData: user
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Restore user error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.delete('/:id', requirePermission(PERMISSIONS.ADMIN_USERS_MANAGE), async (req, res) => {
+  try {
+    const userId = req.params.id;
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });

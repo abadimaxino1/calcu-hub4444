@@ -85,13 +85,37 @@ export default function SeoHead({
 
     // Set JSON-LD structured data
     removeJsonLd();
+    
+    const schemas = [];
+    
+    // Site-wide Organization schema
+    schemas.push({
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      'name': 'Calcu-Hub',
+      'url': window.location.origin,
+      'logo': `${window.location.origin}/logo.png`,
+    });
+
+    // Site-wide WebSite schema
+    schemas.push({
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      'name': 'Calcu-Hub',
+      'url': window.location.origin,
+    });
+
     if (jsonLd) {
+      schemas.push(jsonLd);
+    }
+
+    schemas.forEach(schema => {
       const script = document.createElement('script');
       script.type = 'application/ld+json';
       script.setAttribute('data-seo-head', 'true');
-      script.textContent = JSON.stringify(jsonLd);
+      script.textContent = JSON.stringify(schema);
       document.head.appendChild(script);
-    }
+    });
 
     // Cleanup on unmount
     return () => {

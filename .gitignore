@@ -10,3 +10,12 @@ dist/
 # Local development database
 dev.db
 dev.db-journal
+
+# Temporary artifacts and logs
+/.tmp_screenshots/
+/scripts/logs/
+/scripts/server.out.txt
+/scripts/server.err.txt
+/scripts/verify-output.txt
+/lighthouse-report.json
+/server/runtime/
