@@ -4,7 +4,6 @@ const bcrypt = require('bcryptjs');
 const readline = require('readline');
 const { prisma } = require('./_prisma.cjs');
 
-const file = path.join(__dirname, '..', 'server', 'admin-users.json');
 const username = process.argv[2];
 
 async function getPassword() {
@@ -18,18 +17,48 @@ async function getPassword() {
   });
 
   return new Promise(resolve => {
-    rl.question(`Enter password for ${username}: `, (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-    // Hide input if possible (simple version)
-    rl._writeToOutput = function _writeToOutput(stringToWrite) {
-      if (stringToWrite.includes(`Enter password for ${username}: `)) {
-        rl.output.write(stringToWrite);
-      } else {
-        rl.output.write("*");
+    // Use a more robust way to hide password input
+    process.stdout.write(`Enter password for ${username}: `);
+    
+    // Set raw mode to capture characters without echoing
+    const isRaw = process.stdin.isTTY;
+    if (isRaw) process.stdin.setRawMode(true);
+    
+    let password = '';
+    const onData = (char) => {
+      char = char.toString();
+      switch (char) {
+        case '\n':
+        case '\r':
+        case '\u0004': // Ctrl-D
+          process.stdin.removeListener('data', onData);
+          if (isRaw) process.stdin.setRawMode(false);
+          process.stdout.write('\n');
+          rl.close();
+          resolve(password);
+          break;
+        case '\u0003': // Ctrl-C
+          process.stdin.removeListener('data', onData);
+          if (isRaw) process.stdin.setRawMode(false);
+          process.stdout.write('\n');
+          process.exit(130);
+          break;
+        case '\u0008':
+        case '\x7f': // Backspace
+          if (password.length > 0) {
+            password = password.slice(0, -1);
+            // On some terminals we might want to echo a backspace/space/backspace to clear the asterisk
+            // but since we are silent, we do nothing.
+          }
+          break;
+        default:
+          password += char;
+          // Silent input - no echo
+          break;
       }
     };
+
+    process.stdin.on('data', onData);
   });
 }
 
@@ -45,11 +74,11 @@ async function run() {
     process.exit(2);
   }
 
+  // Use cost factor 12 to match server/routes/auth.cjs
   const hashedPassword = bcrypt.hashSync(password, 12);
-  const now = new Date();
 
   try {
-    // 1. Update Database (Primary Source of Truth)
+    // Update Database (Primary Source of Truth)
     await prisma.user.upsert({
       where: { email: username.toLowerCase() },
       update: { hashedPassword, role: 'SUPER_ADMIN', isActive: true },
@@ -61,17 +90,10 @@ async function run() {
         isActive: true
       }
     });
-    console.log('\n✅ Updated admin in database:', username);
+    console.log('✅ Updated admin in database:', username);
 
-    // 2. Update JSON (Legacy/Dev Fallback - Ignored by Git)
-    let users = {};
-    if (fs.existsSync(file)) {
-      try { users = JSON.parse(fs.readFileSync(file, 'utf8') || '{}'); } catch (e) { users = {}; }
-    }
-    // Use same cost factor (12) for consistency
-    users[username] = { passwordHash: hashedPassword, createdAt: Date.now(), roles: ['Admin'] };
-    fs.writeFileSync(file, JSON.stringify(users, null, 2), 'utf8');
-    console.log('✅ Updated admin in admin-users.json:', username);
+    // Note: JSON fallback removed as it is no longer used by the server.
+    // server/admin-users.json is ignored by git.
 
   } catch (error) {
     console.error('\n❌ Error updating admin:', error.message);
