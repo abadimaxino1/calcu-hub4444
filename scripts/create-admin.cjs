@@ -10,6 +10,12 @@ async function getPassword() {
   if (process.env.CALCU_ADMIN_PASSWORD) return process.env.CALCU_ADMIN_PASSWORD;
   if (process.argv[3]) return process.argv[3];
 
+  const isRaw = process.stdin.isTTY;
+  if (!isRaw) {
+    console.error('Error: Password must be provided via CALCU_ADMIN_PASSWORD env var in non-interactive environments.');
+    process.exit(2);
+  }
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -21,8 +27,7 @@ async function getPassword() {
     process.stdout.write(`Enter password for ${username}: `);
     
     // Set raw mode to capture characters without echoing
-    const isRaw = process.stdin.isTTY;
-    if (isRaw) process.stdin.setRawMode(true);
+    process.stdin.setRawMode(true);
     
     let password = '';
     const onData = (char) => {
