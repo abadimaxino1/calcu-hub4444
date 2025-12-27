@@ -52,13 +52,13 @@ async function runTests() {
 
   const tests = [
     { name: 'Health Check', path: '/api/admin/ops/health' },
-    { name: 'Audit Logs', path: '/api/admin/audit-logs' },
+    { name: 'Audit Logs', path: '/api/admin/audit-logs/' },
     { name: 'Error Logs', path: '/api/admin/ops/errors' },
-    { name: 'Jobs List', path: '/api/admin/ops/jobs' },
-    { name: 'Backups List', path: '/api/admin/ops/backups' },
-    { name: 'CMS Pages', path: '/api/cms/pages' },
-    { name: 'Calculators', path: '/api/calculators' },
-    { name: 'Feature Flags', path: '/api/flags' },
+    { name: 'Jobs List', path: '/api/admin/ops/jobs/' },
+    { name: 'Backups List', path: '/api/admin/ops/backups/' },
+    { name: 'CMS Pages (Admin)', path: '/api/admin/content/pages' },
+    { name: 'Calculators (Public)', path: '/api/calculators/public' },
+    { name: 'Feature Flags (Public)', path: '/api/flags/' },
     { name: 'AI Templates', path: '/api/admin/ai/templates' },
     { name: 'Analytics Providers', path: '/api/admin/growth/analytics/providers' },
     { name: 'SEO Config', path: '/api/admin/growth/seo/config' }
