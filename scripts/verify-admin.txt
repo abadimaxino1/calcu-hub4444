@@ -1,0 +1,30 @@
+﻿🚀 Starting Admin Control Center Verification (Hardened)...
+
+--- B1: Audit Logs ---
+[GET /api/admin/audit-logs]: ❌ (401) 
+[GET /api/admin/audit-logs/export (CSV)]: ❌ (401) 
+
+--- B5: Backups ---
+[GET /api/admin/ops/backups]: ❌ (401) 
+[POST /api/admin/ops/backups/123/restore (Should be 404/403)]: ❌ (401) 
+
+--- B7: Calculators & Caching ---
+[GET /api/calculators/public]: ✅ (200)
+[CACHE] X-Cache Header: ✅
+[CACHE] Cache-Control: ✅
+[GET /api/admin/calculators]: ❌ (401) 
+
+--- Public Content API ---
+[GET /api/content/blog]: ✅ (200)
+[GET /api/content/faqs]: ✅ (200)
+
+--- B12: Navigation Aliases ---
+[GET /admin/audit-logs (Alias Redirect)]: ✅ (302)
+
+--- Route Map Correctness ---
+[GET /api/admin/ops/jobs]: ❌ (401) 
+[GET /api/admin/ops/health]: ❌ (401) 
+[GET /api/admin/settings]: ❌ (401) 
+
+--- Summary ---
+❌ Verification failed with 8 errors.

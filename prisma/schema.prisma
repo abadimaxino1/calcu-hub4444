@@ -1,6 +1,8 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client-js"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["driverAdapters", "queryCompiler"]
+  engineType      = "client"
 }
 
 datasource db {
@@ -12,16 +14,21 @@ model User {
   email           String              @unique
   name            String
   hashedPassword  String
-  role            Role                @default(VIEW_ONLY)
+  role            Role                @default("VIEW_ONLY")
   isActive        Boolean             @default(true)
   totpSecret      String?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
+  createdById     String?
+  deletedAt       DateTime?
+  deletedById     String?
+  updatedById     String?
   activityLogs    AdminActivityLog[]
   blogPosts       BlogPost[]
   sessions        Session[]
   staticPageEdits StaticPageContent[] @relation("LastEditor")
 
+  @@index([deletedAt])
   @@map("users")
 }
 
@@ -48,13 +55,13 @@ model PageView {
   country     String?
   device      String?
   browser     String?
-  locale      String?
-  utmSource   String?
-  utmMedium   String?
-  utmCampaign String?
-  utmTerm     String?
-  utmContent  String?
   createdAt   DateTime @default(now())
+  locale      String?
+  utmCampaign String?
+  utmContent  String?
+  utmMedium   String?
+  utmSource   String?
+  utmTerm     String?
 
   @@index([pagePath])
   @@index([createdAt])
@@ -72,18 +79,37 @@ model CalculationEvent {
   inputSummary   String
   resultSummary  String
   durationMs     Int      @default(0)
-  locale         String?
+  createdAt      DateTime @default(now())
   country        String?
   device         String?
-  utmSource      String?
-  utmMedium      String?
+  locale         String?
   utmCampaign    String?
-  createdAt      DateTime @default(now())
+  utmMedium      String?
+  utmSource      String?
+  pagePath       String?
 
   @@index([calculatorType])
   @@index([createdAt])
   @@index([locale])
   @@map("calculation_events")
+}
+
+model Calculator {
+  id                 String   @id @default(uuid())
+  key                String   @unique
+  nameAr             String
+  nameEn             String
+  status             String   @default("hidden")
+  routePath          String
+  configJson         String?
+  analyticsNamespace String?
+  adProfileId        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdById        String?
+  updatedById        String?
+
+  @@map("calculators")
 }
 
 model AdEvent {
@@ -92,11 +118,11 @@ model AdEvent {
   eventType String
   sessionId String
   pagePath  String
+  createdAt DateTime @default(now())
   country   String?
   device    String?
-  locale    String?
   ipAddress String?
-  createdAt DateTime @default(now())
+  locale    String?
   adSlot    AdSlot   @relation(fields: [adSlotId], references: [id])
 
   @@index([adSlotId])
@@ -104,6 +130,7 @@ model AdEvent {
   @@index([eventType])
   @@index([country])
   @@index([sessionId])
+  @@index([adSlotId, eventType])
   @@map("ad_events")
 }
 
@@ -118,8 +145,13 @@ model AdSlot {
   notes           String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  createdById     String?
+  deletedAt       DateTime?
+  deletedById     String?
+  updatedById     String?
   events          AdEvent[]
 
+  @@index([deletedAt])
   @@map("ad_slots")
 }
 
@@ -160,54 +192,80 @@ model SeoConfig {
 }
 
 model StaticPageContent {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   slug           String
-  locale         String   @default("ar")
+  locale         String    @default("ar")
   title          String
   bodyMarkdown   String
   lastEditedById String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  lastEditedBy   User?    @relation("LastEditor", fields: [lastEditedById], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdById    String?
+  deletedAt      DateTime?
+  deletedById    String?
+  updatedById    String?
+  lastEditedBy   User?     @relation("LastEditor", fields: [lastEditedById], references: [id])
 
   @@unique([slug, locale])
+  @@index([deletedAt])
   @@map("static_page_contents")
 }
 
 model BlogPost {
-  id           String    @id @default(uuid())
-  slug         String    @unique
-  title        String
-  excerpt      String
-  bodyMarkdown String
-  heroImageUrl String?
-  tags         String
-  authorId     String
-  isPublished  Boolean   @default(false)
-  publishedAt  DateTime?
-  viewCount    Int       @default(0)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  author       User      @relation(fields: [authorId], references: [id])
+  id             String    @id @default(uuid())
+  slug           String    @unique
+  titleAr        String    @default("")
+  titleEn        String    @default("")
+  excerptAr      String    @default("")
+  excerptEn      String    @default("")
+  bodyMarkdownAr String    @default("")
+  bodyMarkdownEn String    @default("")
+  heroImageUrl   String?
+  tags           String
+  authorId       String
+  isPublished    Boolean   @default(false)
+  publishedAt    DateTime?
+  viewCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  title          String    @default("")
+  excerpt        String    @default("")
+  bodyMarkdown   String    @default("")
+  createdById    String?
+  deletedAt      DateTime?
+  deletedById    String?
+  updatedById    String?
+  author         User      @relation(fields: [authorId], references: [id])
 
   @@index([isPublished])
   @@index([publishedAt])
+  @@index([deletedAt])
   @@map("blog_posts")
 }
 
 model FAQ {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   category    String
-  locale      String   @default("ar")
-  question    String
-  answer      String
-  sortOrder   Int      @default(0)
-  isPublished Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  questionAr  String    @default("")
+  questionEn  String    @default("")
+  answerAr    String    @default("")
+  answerEn    String    @default("")
+  sortOrder   Int       @default(0)
+  scope       String    @default("global")
+  isPublished Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  deletedById String?
+  updatedById String?
+  createdById String?
+  locale      String    @default("ar")
+  question    String    @default("")
+  answer      String    @default("")
 
   @@index([category])
-  @@index([locale])
+  @@index([isPublished])
+  @@index([deletedAt])
   @@map("faqs")
 }
 
@@ -241,14 +299,34 @@ model SystemSetting {
 }
 
 model FeatureFlag {
-  id          String   @id @default(uuid())
-  key         String   @unique
-  isEnabled   Boolean  @default(false)
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String            @id @default(uuid())
+  key              String            @unique
+  name             String
+  description      String?
+  enabledByDefault Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  rules            FeatureFlagRule[]
 
   @@map("feature_flags")
+}
+
+model FeatureFlagRule {
+  id                String      @id @default(uuid())
+  flagId            String
+  environment       String
+  enabled           Boolean     @default(false)
+  rolloutPercentage Int         @default(0)
+  targetingJson     String?
+  dependenciesJson  String?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  flag              FeatureFlag @relation(fields: [flagId], references: [id], onDelete: Cascade)
+
+  @@unique([flagId, environment])
+  @@map("feature_flag_rules")
 }
 
 model AnalyticsDaily {
@@ -268,20 +346,82 @@ model AnalyticsDaily {
   @@map("analytics_daily")
 }
 
-enum Role {
-  SUPER_ADMIN
-  ADMIN
-  IT
-  DESIGNER
-  CONTENT_WRITER
-  ADS_MANAGER
-  ANALYST
-  VIEW_ONLY
+model AnalyticsEvent {
+  id          String                   @id @default(uuid())
+  key         String                   @unique
+  name        String
+  description String?
+  category    String                   @default("general")
+  enabled     Boolean                  @default(true)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  properties  AnalyticsEventProperty[]
+
+  @@map("analytics_events")
 }
 
-// ============================================
-// Revenue Model & Monetization
-// ============================================
+model AnalyticsEventLog {
+  id             String   @id @default(uuid())
+  sessionId      String
+  eventKey       String
+  pagePath       String?
+  propertiesJson String   @default("{}")
+  occurredAt     DateTime @default(now())
+
+  @@index([eventKey])
+  @@index([sessionId])
+  @@index([occurredAt])
+  @@map("analytics_event_logs")
+}
+
+model AnalyticsEventProperty {
+  id           String         @id @default(uuid())
+  eventId      String
+  key          String
+  type         String         @default("string")
+  required     Boolean        @default(false)
+  exampleValue String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  event        AnalyticsEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, key])
+  @@map("analytics_event_properties")
+}
+
+model AnalyticsProvider {
+  id           String   @id @default(uuid())
+  key          String   @unique
+  enabled      Boolean  @default(false)
+  settingsJson String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("analytics_providers")
+}
+
+model Funnel {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  name      String
+  stepsJson String
+  scope     String   @default("site")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("funnels")
+}
+
+model Cohort {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  name      String
+  ruleJson  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cohorts")
+}
 
 model RevenueModel {
   id            String    @id @default(uuid())
@@ -290,7 +430,7 @@ model RevenueModel {
   effectiveFrom DateTime
   effectiveTo   DateTime?
   isActive      Boolean   @default(true)
-  assumptions   String    // JSON: eCPM/CPC/CTR by slot, device, country
+  assumptions   String
   createdById   String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -301,22 +441,22 @@ model RevenueModel {
 }
 
 model MonetizationAlert {
-  id          String    @id @default(uuid())
-  alertType   String    // HIGH_CTR, SUSPICIOUS_CLICKS, ABNORMAL_RPM, LOW_FILL_RATE
-  severity    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
-  adSlotId    String?
-  pagePath    String?
-  country     String?
-  device      String?
-  periodStart DateTime
-  periodEnd   DateTime
-  metrics     String    // JSON: actual values, thresholds, deviations
-  message     String
-  isResolved  Boolean   @default(false)
+  id           String    @id @default(uuid())
+  alertType    String
+  severity     String    @default("MEDIUM")
+  adSlotId     String?
+  pagePath     String?
+  country      String?
+  device       String?
+  periodStart  DateTime
+  periodEnd    DateTime
+  metrics      String
+  message      String
+  isResolved   Boolean   @default(false)
   resolvedById String?
-  resolvedAt  DateTime?
+  resolvedAt   DateTime?
   resolvedNote String?
-  createdAt   DateTime  @default(now())
+  createdAt    DateTime  @default(now())
 
   @@index([alertType])
   @@index([severity])
@@ -326,28 +466,518 @@ model MonetizationAlert {
 }
 
 model TrafficSession {
-  id          String   @id @default(uuid())
-  sessionId   String   @unique
+  id            String   @id @default(uuid())
+  sessionId     String   @unique
   firstPagePath String
-  referrer    String?
-  utmSource   String?
-  utmMedium   String?
-  utmCampaign String?
-  utmTerm     String?
-  utmContent  String?
-  country     String?
-  device      String?
-  locale      String?
-  pageViews   Int      @default(1)
-  calculations Int     @default(0)
-  adImpressions Int    @default(0)
-  adClicks    Int      @default(0)
-  startedAt   DateTime @default(now())
-  lastSeenAt  DateTime @default(now())
+  referrer      String?
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  utmTerm       String?
+  utmContent    String?
+  country       String?
+  device        String?
+  locale        String?
+  pageViews     Int      @default(1)
+  calculations  Int      @default(0)
+  adImpressions Int      @default(0)
+  adClicks      Int      @default(0)
+  startedAt     DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
 
   @@index([utmSource])
   @@index([referrer])
   @@index([startedAt])
   @@index([country])
   @@map("traffic_sessions")
+}
+
+model ToolCard {
+  id               String    @id @default(uuid())
+  slug             String    @unique
+  titleAr          String
+  titleEn          String
+  descAr           String
+  descEn           String
+  icon             String
+  color            String    @default("from-blue-500 to-indigo-600")
+  sortOrder        Int       @default(0)
+  isFeaturedOnHome Boolean   @default(true)
+  isVisibleOnTools Boolean   @default(true)
+  isPublished      Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdById      String?
+  deletedAt        DateTime?
+  deletedById      String?
+  updatedById      String?
+
+  @@index([isFeaturedOnHome])
+  @@index([isVisibleOnTools])
+  @@index([deletedAt])
+  @@map("tool_cards")
+}
+
+model BenefitFeature {
+  id          String    @id @default(uuid())
+  titleAr     String
+  titleEn     String
+  descAr      String
+  descEn      String
+  icon        String
+  sortOrder   Int       @default(0)
+  isPublished Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  deletedAt   DateTime?
+  deletedById String?
+  updatedById String?
+
+  @@index([isPublished])
+  @@index([deletedAt])
+  @@map("benefit_features")
+}
+
+model AIIntegration {
+  id        String   @id @default(uuid())
+  provider  String   @unique
+  isEnabled Boolean  @default(false)
+  apiKey    String?
+  model     String?
+  features  String
+  quota     Int      @default(0)
+  used      Int      @default(0)
+  lastReset DateTime @default(now())
+  config    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_integrations")
+}
+
+model AIGeneratedContent {
+  id          String   @id @default(uuid())
+  contentType String
+  targetId    String?
+  prompt      String
+  response    String
+  provider    String
+  model       String?
+  tokensUsed  Int      @default(0)
+  isApproved  Boolean  @default(false)
+  approvedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([contentType])
+  @@index([isApproved])
+  @@index([createdAt])
+  @@map("ai_generated_content")
+}
+
+model RevenueGoal {
+  id              String   @id @default(uuid())
+  year            Int
+  month           Int
+  targetRevenue   Float
+  targetPageviews Int
+  targetRPM       Float
+  actualRevenue   Float    @default(0)
+  actualPageviews Int      @default(0)
+  actualRPM       Float    @default(0)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([year, month])
+  @@index([year, month])
+  @@map("revenue_goals")
+}
+
+model RevenueProjection {
+  id               String   @id @default(uuid())
+  projectionDate   DateTime @unique
+  projectedRevenue Float
+  confidence       String   @default("MEDIUM")
+  basedOnDays      Int
+  growthRate       Float
+  seasonalFactor   Float    @default(1.0)
+  assumptions      String
+  actualRevenue    Float?
+  accuracy         Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([projectionDate])
+  @@map("revenue_projections")
+}
+
+model MaintenanceMode {
+  id         String    @id @default(uuid())
+  isEnabled  Boolean   @default(false)
+  title      String    @default("الموقع قيد الصيانة / Site Under Maintenance")
+  messageAr  String    @default("نعتذر عن الإزعاج. الموقع قيد الصيانة حالياً وسيعود قريباً.")
+  messageEn  String    @default("Sorry for the inconvenience. The site is currently under maintenance and will be back soon.")
+  startTime  DateTime?
+  endTime    DateTime?
+  allowedIPs String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@map("maintenance_mode")
+}
+
+model SystemHealth {
+  id           String   @id @default(uuid())
+  checkTime    DateTime @unique
+  cpuUsage     Float?
+  memoryUsage  Float?
+  diskUsage    Float?
+  responseTime Int?
+  errorRate    Float?
+  activeUsers  Int?
+  databaseSize Float?
+  cacheHitRate Float?
+  status       String   @default("HEALTHY")
+  issues       String?
+  createdAt    DateTime @default(now())
+
+  @@index([checkTime])
+  @@index([status])
+  @@map("system_health")
+}
+
+model PageEdit {
+  id          String    @id @default(uuid())
+  pageSlug    String
+  pagePath    String
+  sectionId   String?
+  editType    String
+  beforeData  String?
+  afterData   String?
+  editorId    String
+  editorName  String
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([pageSlug])
+  @@index([editorId])
+  @@index([createdAt])
+  @@map("page_edits")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  occurredAt   DateTime @default(now())
+  severity     String   @default("info")
+  actorUserId  String?
+  actorRole    String?
+  actorIp      String?
+  userAgent    String?
+  requestId    String?
+  sessionId    String?
+  action       String
+  entityType   String
+  entityId     String?
+  entityLabel  String?
+  beforeJson   String?
+  afterJson    String?
+  diffJson     String?
+  metadataJson String   @default("{}")
+
+  @@index([occurredAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([requestId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model JobDefinition {
+  key            String   @id
+  name           String
+  description    String?
+  scheduleCron   String?
+  enabled        Boolean  @default(true)
+  defaultPayload String?  @default("{}")
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  runs           JobRun[]
+
+  @@map("job_definitions")
+}
+
+model JobRun {
+  id            String        @id @default(uuid())
+  jobKey        String
+  status        String        @default("QUEUED")
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  durationMs    Int?
+  attempt       Int           @default(1)
+  maxAttempts   Int           @default(3)
+  payloadJson   String?       @default("{}")
+  resultJson    String?
+  errorJson     String?
+  requestId     String?
+  triggeredById String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  definition    JobDefinition @relation(fields: [jobKey], references: [key])
+
+  @@index([status])
+  @@index([startedAt])
+  @@index([jobKey])
+  @@map("job_runs")
+}
+
+model Backup {
+  id              String   @id @default(uuid())
+  type            String
+  storageProvider String   @default("local")
+  filePath        String
+  fileSizeBytes   Int
+  checksum        String?
+  durationMs      Int?
+  status          String   @default("success")
+  errorJson       String?
+  createdAt       DateTime @default(now())
+  createdById     String?
+
+  @@index([createdAt])
+  @@map("backups")
+}
+
+model BackupSchedule {
+  id             String    @id @default(uuid())
+  cron           String    @default("0 0 * * *")
+  retentionCount Int       @default(7)
+  enabled        Boolean   @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  @@map("backup_schedules")
+}
+
+model CmsPage {
+  id               String   @id @default(uuid())
+  slug             String   @unique
+  pageType         String
+  status           String   @default("draft")
+  currentVersionId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdById      String?
+  updatedById      String?
+
+  @@index([slug])
+  @@map("cms_pages")
+}
+
+model CmsPageVersion {
+  id               String   @id @default(uuid())
+  pageId           String
+  versionNumber    Int
+  locale           String
+  title            String
+  description      String?
+  bodyRichJson     String?
+  examplesJson     String?
+  faqJson          String?
+  legalNotes       String?
+  seoOverridesJson String?
+  publishNotes     String?
+  createdAt        DateTime @default(now())
+  createdById      String?
+
+  @@index([pageId, versionNumber])
+  @@map("cms_page_versions")
+}
+
+model CmsPreviewToken {
+  token       String   @id
+  pageId      String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  @@map("cms_preview_tokens")
+}
+
+model AdProfile {
+  id             String   @id @default(uuid())
+  name           String   @unique
+  slotsOrderJson String?
+  policiesJson   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("ad_profiles")
+}
+
+model Experiment {
+  id             String    @id @default(uuid())
+  key            String    @unique
+  name           String
+  status         String    @default("draft")
+  allocationJson String?
+  targetingJson  String?
+  startAt        DateTime?
+  endAt          DateTime?
+  primaryMetric  String?
+  variantsJson   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("experiments")
+}
+
+model Redirect {
+  id        String   @id @default(uuid())
+  fromPath  String   @unique
+  toPath    String
+  type      Int      @default(301)
+  enabled   Boolean  @default(true)
+  hitCount  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("redirects")
+}
+
+model BrokenLink {
+  id           String   @id @default(uuid())
+  url          String
+  sourceUrl    String
+  statusCode   Int?
+  errorMessage String?
+  lastChecked  DateTime @default(now())
+  isFixed      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@map("broken_links")
+}
+
+model SeoGlobalSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("seo_global_settings")
+}
+
+model SchemaTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  template    String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("schema_templates")
+}
+
+model AiPromptTemplate {
+  id              String            @id @default(uuid())
+  key             String            @unique
+  name            String
+  purpose         String?
+  activeVersionId String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  versions        AiPromptVersion[]
+
+  @@map("ai_prompt_templates")
+}
+
+model AiPromptVersion {
+  id                   String           @id @default(uuid())
+  templateId           String
+  versionNumber        Int
+  modelPreferencesJson String?
+  promptText           String
+  createdById          String?
+  createdAt            DateTime         @default(now())
+  template             AiPromptTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, versionNumber])
+  @@map("ai_prompt_versions")
+}
+
+model AiUsageLog {
+  id            String   @id @default(uuid())
+  provider      String
+  model         String
+  featureKey    String
+  tokensIn      Int      @default(0)
+  tokensOut     Int      @default(0)
+  latencyMs     Int      @default(0)
+  estimatedCost Float    @default(0)
+  userId        String?
+  status        String   @default("success")
+  errorCode     String?
+  createdAt     DateTime @default(now())
+
+  @@index([featureKey])
+  @@index([createdAt])
+  @@map("ai_usage_logs")
+}
+
+model AiFallbackRule {
+  id                String   @id @default(uuid())
+  featureKey        String   @unique
+  primaryProvider   String
+  fallbackChainJson String
+  timeoutMs         Int      @default(10000)
+  maxRetries        Int      @default(2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("ai_fallback_rules")
+}
+
+model ErrorEvent {
+  id           String    @id @default(uuid())
+  occurredAt   DateTime  @default(now())
+  message      String
+  stack        String?
+  level        String    @default("error")
+  source       String?
+  route        String?
+  pagePath     String?
+  requestId    String?
+  sessionId    String?
+  userId       String?
+  actorRole    String?
+  userAgent    String?
+  ipAddress    String?
+  metadataJson String    @default("{}")
+  isResolved   Boolean   @default(false)
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  @@index([occurredAt])
+  @@index([level])
+  @@index([isResolved])
+  @@index([requestId])
+  @@map("error_events")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  IT
+  DESIGNER
+  CONTENT_WRITER
+  ADS_MANAGER
+  ANALYST
+  VIEW_ONLY
 }

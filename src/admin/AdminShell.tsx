@@ -1,13 +1,66 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
+import * as Sentry from "@sentry/react";
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import Login from './Login';
-import AnalyticsPanel from './AnalyticsPanel';
-import UsersPanel from './UsersPanel';
-import TestsPanel from './TestsPanel';
-import ContentPanel from './ContentPanel';
-import SeoPanel from './SeoPanel';
-import AdsPanel from './AdsPanel';
-import SettingsPanel from './SettingsPanel';
-import MonetizationPanel from './MonetizationPanel';
+
+// Lazy load admin panels to reduce initial bundle size
+const measureLoad = (name: string, importer: () => Promise<any>) => {
+  return React.lazy(() => {
+    const start = performance.now();
+    return importer().then(module => {
+      const duration = performance.now() - start;
+      console.log(`[Perf] ${name} module loaded in ${duration.toFixed(2)}ms`);
+      performance.mark(`${name}-loaded`);
+      return module;
+    });
+  });
+};
+
+const PANEL_IMPORTERS = {
+  analytics: () => import('./AnalyticsPanel'),
+  users: () => import('./UsersPanel'),
+  tests: () => import('./TestsPanel'),
+  content: () => import('./ContentPanel'),
+  seo: () => import('./SeoPanel'),
+  ads: () => import('./AdsPanel'),
+  settings: () => import('./SettingsPanel'),
+  monetization: () => import('./MonetizationPanel'),
+  'tools-features': () => import('./ToolsFeaturesPanel'),
+  'ai-integrations': () => import('./AIIntegrationsPanel'),
+  maintenance: () => import('./MaintenancePanel'),
+  audit: () => import('./AuditPanel'),
+  diagnostics: () => import('./DiagnosticsPanel'),
+  errors: () => import('./ErrorsPanel'),
+  jobs: () => import('./JobsPanel'),
+  backups: () => import('./BackupsPanel'),
+  calculators: () => import('./CalculatorsPanel'),
+  flags: () => import('./FeatureFlagsPanel'),
+  'analytics-definitions': () => import('./AnalyticsDefinitionsPanel'),
+  'ad-inventory': () => import('./AdInventoryPanel'),
+  experiments: () => import('./ExperimentsPanel'),
+};
+
+const AnalyticsPanel = measureLoad('Analytics', PANEL_IMPORTERS.analytics);
+const UsersPanel = measureLoad('Users', PANEL_IMPORTERS.users);
+const TestsPanel = measureLoad('Tests', PANEL_IMPORTERS.tests);
+const ContentPanel = measureLoad('Content', PANEL_IMPORTERS.content);
+const SeoPanel = measureLoad('Seo', PANEL_IMPORTERS.seo);
+const AdsPanel = measureLoad('Ads', PANEL_IMPORTERS.ads);
+const SettingsPanel = measureLoad('Settings', PANEL_IMPORTERS.settings);
+const MonetizationPanel = measureLoad('Monetization', PANEL_IMPORTERS.monetization);
+const ToolsFeaturesPanel = measureLoad('ToolsFeatures', PANEL_IMPORTERS['tools-features']);
+const AIIntegrationsPanel = measureLoad('AIIntegrations', PANEL_IMPORTERS['ai-integrations']);
+const MaintenancePanel = measureLoad('Maintenance', PANEL_IMPORTERS.maintenance);
+const AuditPanel = measureLoad('Audit', PANEL_IMPORTERS.audit);
+const DiagnosticsPanel = measureLoad('Diagnostics', PANEL_IMPORTERS.diagnostics);
+const ErrorsPanel = measureLoad('Errors', PANEL_IMPORTERS.errors);
+const JobsPanel = measureLoad('Jobs', PANEL_IMPORTERS.jobs);
+const BackupsPanel = measureLoad('Backups', PANEL_IMPORTERS.backups);
+const CalculatorsPanel = measureLoad('Calculators', PANEL_IMPORTERS.calculators);
+const FeatureFlagsPanel = measureLoad('FeatureFlags', PANEL_IMPORTERS.flags);
+const AnalyticsDefinitionsPanel = measureLoad('AnalyticsDefinitions', PANEL_IMPORTERS['analytics-definitions']);
+const AdInventoryPanel = measureLoad('AdInventory', PANEL_IMPORTERS['ad-inventory']);
+const ExperimentsPanel = measureLoad('Experiments', PANEL_IMPORTERS.experiments);
 
 // Admin user type from API
 interface AdminUser {
@@ -17,20 +70,42 @@ interface AdminUser {
   role: string;
 }
 
-// Tab configuration with role requirements
+// Tab configuration with role requirements and logical grouping
 const TABS = [
-  { key: 'dashboard', label: 'لوحة التحكم', labelEn: 'Dashboard', icon: '📊', roles: [] },
-  { key: 'analytics', label: 'التحليلات', labelEn: 'Analytics', icon: '📈', roles: ['SUPER_ADMIN', 'ADMIN', 'ANALYST'] },
-  { key: 'monetization', label: 'الإيرادات', labelEn: 'Monetization', icon: '💵', roles: ['SUPER_ADMIN', 'ADMIN', 'ADS_MANAGER', 'ANALYST'] },
-  { key: 'users', label: 'المستخدمين', labelEn: 'Users', icon: '👥', roles: ['SUPER_ADMIN', 'ADMIN', 'IT'] },
-  { key: 'content', label: 'المحتوى', labelEn: 'Content', icon: '📝', roles: ['SUPER_ADMIN', 'ADMIN', 'CONTENT_WRITER'] },
-  { key: 'seo', label: 'SEO', labelEn: 'SEO', icon: '🔍', roles: ['SUPER_ADMIN', 'ADMIN', 'CONTENT_WRITER'] },
-  { key: 'ads', label: 'الإعلانات', labelEn: 'Ads', icon: '💰', roles: ['SUPER_ADMIN', 'ADMIN', 'ADS_MANAGER'] },
-  { key: 'settings', label: 'الإعدادات', labelEn: 'Settings', icon: '⚙️', roles: ['SUPER_ADMIN', 'IT'] },
-  { key: 'tests', label: 'الاختبارات', labelEn: 'Tests', icon: '🧪', roles: ['SUPER_ADMIN', 'IT'] },
+  { key: 'dashboard', label: 'لوحة التحكم', labelEn: 'Dashboard', icon: '📊', roles: [], groupId: 'general' },
+  { key: 'analytics', label: 'التحليلات', labelEn: 'Analytics', icon: '📈', roles: ['SUPER_ADMIN', 'ADMIN', 'ANALYST'], groupId: 'growth' },
+  { key: 'analytics-definitions', label: 'تعريفات التحليلات', labelEn: 'Analytics Definitions', icon: '📊', roles: ['SUPER_ADMIN', 'ADMIN'], groupId: 'growth' },
+  { key: 'experiments', label: 'التجارب', labelEn: 'Experiments', icon: '🧪', roles: ['SUPER_ADMIN', 'ADMIN'], groupId: 'growth' },
+  { key: 'monetization', label: 'الإيرادات', labelEn: 'Monetization', icon: '💵', roles: ['SUPER_ADMIN', 'ADMIN', 'ADS_MANAGER', 'ANALYST'], groupId: 'revenue' },
+  { key: 'ad-inventory', label: 'مخزون الإعلانات', labelEn: 'Ad Inventory', icon: '📢', roles: ['SUPER_ADMIN', 'ADMIN', 'ADS_MANAGER'], groupId: 'revenue' },
+  { key: 'users', label: 'المستخدمين والصلاحيات', labelEn: 'Users & Permissions', icon: '👥', roles: ['SUPER_ADMIN', 'ADMIN', 'IT'], groupId: 'security' },
+  { key: 'content', label: 'المحتوى (CMS)', labelEn: 'Content (CMS)', icon: '📝', roles: ['SUPER_ADMIN', 'ADMIN', 'CONTENT_WRITER'], groupId: 'product' },
+  { key: 'calculators', label: 'سجل الحاسبات', labelEn: 'Calculators', icon: '🧮', roles: ['SUPER_ADMIN', 'ADMIN'], groupId: 'product' },
+  { key: 'flags', label: 'أعلام الميزات', labelEn: 'Feature Flags', icon: '🚩', roles: ['SUPER_ADMIN', 'ADMIN'], groupId: 'product' },
+  { key: 'tools-features', label: 'الحاسبات والمميزات', labelEn: 'Tools & Features', icon: '🛠️', roles: ['SUPER_ADMIN', 'ADMIN', 'CONTENT_WRITER'], groupId: 'product' },
+  { key: 'seo', label: 'SEO', labelEn: 'SEO', icon: '🔍', roles: ['SUPER_ADMIN', 'ADMIN', 'CONTENT_WRITER'], groupId: 'growth' },
+  { key: 'ads', label: 'الإعلانات', labelEn: 'Ads', icon: '💰', roles: ['SUPER_ADMIN', 'ADMIN', 'ADS_MANAGER'], groupId: 'revenue' },
+  { key: 'ai-integrations', label: 'الذكاء الاصطناعي', labelEn: 'AI Integrations', icon: '🤖', roles: ['SUPER_ADMIN', 'ADMIN', 'IT'], groupId: 'security' },
+  { key: 'maintenance', label: 'الصيانة', labelEn: 'Maintenance', icon: '🔧', roles: ['SUPER_ADMIN', 'ADMIN', 'IT'], groupId: 'operations' },
+  { key: 'audit', label: 'سجل النظام', labelEn: 'System Logs', icon: '📜', roles: ['SUPER_ADMIN', 'IT'], groupId: 'operations' },
+  { key: 'diagnostics', label: 'الصحة والتشخيص', labelEn: 'Health & Diagnostics', icon: '🩺', roles: ['SUPER_ADMIN', 'IT'], groupId: 'operations' },
+  { key: 'errors', label: 'الأخطاء', labelEn: 'Errors', icon: '⚠️', roles: ['SUPER_ADMIN', 'IT'], groupId: 'operations' },
+  { key: 'jobs', label: 'المهام المجدولة', labelEn: 'Jobs', icon: '⚡', roles: ['SUPER_ADMIN', 'IT'], groupId: 'operations' },
+  { key: 'backups', label: 'النسخ الاحتياطي', labelEn: 'Backups', icon: '💾', roles: ['SUPER_ADMIN', 'IT'], groupId: 'operations' },
+  { key: 'settings', label: 'الإعدادات والمفاتيح', labelEn: 'Settings & API Keys', icon: '⚙️', roles: ['SUPER_ADMIN', 'IT'], groupId: 'security' },
+  { key: 'tests', label: 'الاختبارات', labelEn: 'Tests', icon: '🧪', roles: ['SUPER_ADMIN', 'IT'], groupId: 'operations' },
+] as const;
+
+const GROUPS = [
+  { id: 'product', label: 'المنتج', labelEn: 'Product', icon: '📦' },
+  { id: 'growth', label: 'النمو', labelEn: 'Growth', icon: '📈' },
+  { id: 'revenue', label: 'الإيرادات', labelEn: 'Revenue', icon: '💰' },
+  { id: 'operations', label: 'العمليات', labelEn: 'Operations', icon: '⚙️' },
+  { id: 'security', label: 'الأمان', labelEn: 'Security', icon: '🛡️' },
 ] as const;
 
 type TabKey = typeof TABS[number]['key'];
+type GroupId = typeof GROUPS[number]['id'] | 'general';
 
 // Role display names
 const ROLE_NAMES: Record<string, { ar: string; en: string }> = {
@@ -53,8 +128,39 @@ function hasAccess(userRole: string, allowedRoles: readonly string[]): boolean {
 // Admin panel language type
 type AdminLang = 'ar' | 'en';
 
+function AdminLoadingSkeleton() {
+  return (
+    <div className="animate-pulse space-y-6">
+      <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-1/4"></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="h-24 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+        ))}
+      </div>
+      <div className="h-96 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+    </div>
+  );
+}
+
 export default function AdminShell() {
-  const [tab, setTab] = useState<TabKey>('dashboard');
+  const [tab, setTab] = useState<TabKey>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get('tab') as TabKey;
+      if (t && TABS.some(x => x.key === t)) return t;
+    }
+    return 'dashboard';
+  });
+
+  // Sync tab to URL
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [tab]);
+
   const [user, setUser] = useState<AdminUser | null>(null);
   const [lang, setLang] = useState<AdminLang>(() => {
     // Check localStorage for saved preference
@@ -63,10 +169,31 @@ export default function AdminShell() {
   });
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+    // Expand the group of the current tab by default
+    const currentTab = TABS.find(t => t.key === tab);
+    if (currentTab && currentTab.groupId !== 'general') {
+      return { [currentTab.groupId]: true };
+    }
+    return {};
+  });
 
   useEffect(() => {
     checkAuth();
   }, []);
+
+  const prefetched = React.useRef(new Set<string>());
+
+  const handlePrefetch = (key: string) => {
+    if (prefetched.current.has(key)) return;
+    
+    const importer = PANEL_IMPORTERS[key as keyof typeof PANEL_IMPORTERS];
+    if (importer) {
+      console.log(`[Prefetch] Starting prefetch for ${key}`);
+      importer();
+      prefetched.current.add(key);
+    }
+  };
 
   const checkAuth = () => {
     fetch('/api/auth/check', { credentials: 'include' })
@@ -74,21 +201,28 @@ export default function AdminShell() {
       .then(j => {
         if (j && j.ok && j.user) {
           setUser(j.user);
+          Sentry.setUser({ id: j.user.id, role: j.user.role });
         } else {
           setUser(null);
+          Sentry.setUser(null);
         }
       })
-      .catch(() => setUser(null))
+      .catch(() => {
+        setUser(null);
+        Sentry.setUser(null);
+      })
       .finally(() => setLoading(false));
   };
 
   const handleLogin = (loggedInUser: AdminUser) => {
     setUser(loggedInUser);
+    Sentry.setUser({ id: loggedInUser.id, role: loggedInUser.role });
   };
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     setUser(null);
+    Sentry.setUser(null);
   };
 
   const toggleLang = () => {
@@ -115,10 +249,17 @@ export default function AdminShell() {
   const roleName = ROLE_NAMES[user.role] || { ar: user.role, en: user.role };
   const accessibleTabs = TABS.filter(t => hasAccess(user.role, t.roles));
 
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupId]: !prev[groupId]
+    }));
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       {/* Sidebar */}
-      <aside className={`flex-shrink-0 bg-white dark:bg-slate-800 shadow-lg transition-all duration-300 h-screen sticky top-0 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+      <aside className={`flex-shrink-0 bg-white dark:bg-slate-800 shadow-lg transition-all duration-300 h-screen sticky top-0 flex flex-col ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
         <div className="p-4 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between">
             {!sidebarCollapsed && (
@@ -133,11 +274,20 @@ export default function AdminShell() {
           </div>
         </div>
         
-        <nav className="p-2 pb-24">
-          {accessibleTabs.map(t => (
+        <nav className="p-2 flex-1 overflow-y-auto custom-scrollbar">
+          {/* General / Dashboard */}
+          {accessibleTabs.filter(t => t.groupId === 'general').map(t => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              data-testid={`nav-${t.key}`}
+              onMouseEnter={() => handlePrefetch(t.key)}
+              onFocus={() => handlePrefetch(t.key)}
+              onClick={() => {
+                const markName = `nav-start-${t.key}`;
+                performance.mark(markName);
+                console.log(`[Perf] Navigation started: ${t.key}`);
+                setTab(t.key);
+              }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition ${
                 tab === t.key 
                   ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' 
@@ -148,9 +298,88 @@ export default function AdminShell() {
               {!sidebarCollapsed && <span>{lang === 'ar' ? t.label : t.labelEn}</span>}
             </button>
           ))}
+
+          {/* Logical Groups */}
+          {GROUPS.map(group => {
+            const groupTabs = accessibleTabs.filter(t => t.groupId === group.id);
+            if (groupTabs.length === 0) return null;
+
+            const isExpanded = expandedGroups[group.id];
+            const hasActiveTab = groupTabs.some(t => t.key === tab);
+
+            return (
+              <div key={group.id} className="mb-2">
+                <button
+                  onClick={() => toggleGroup(group.id)}
+                  className={`w-full flex items-center justify-between px-4 py-2 rounded-lg transition ${
+                    hasActiveTab && !isExpanded ? 'bg-slate-50 dark:bg-slate-700/50' : ''
+                  } text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg opacity-70">{group.icon}</span>
+                    {!sidebarCollapsed && (
+                      <span className="text-xs font-bold uppercase tracking-wider">
+                        {lang === 'ar' ? group.label : group.labelEn}
+                      </span>
+                    )}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className={`text-[10px] transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                      ▼
+                    </span>
+                  )}
+                </button>
+
+                {isExpanded && !sidebarCollapsed && (
+                  <div className="mt-1 space-y-1 mr-4 ml-4 border-r-2 border-slate-100 dark:border-slate-700 pr-2 pl-2">
+                    {groupTabs.map(t => (
+                      <button
+                        key={t.key}
+                        data-testid={`nav-${t.key}`}
+                        onMouseEnter={() => handlePrefetch(t.key)}
+                        onFocus={() => handlePrefetch(t.key)}
+                        onClick={() => setTab(t.key)}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition ${
+                          tab === t.key 
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' 
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <span className="text-base">{t.icon}</span>
+                        <span>{lang === 'ar' ? t.label : t.labelEn}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* If collapsed, show icons only if expanded? No, if collapsed, we should probably show a tooltip or just the icons. 
+                    Actually, the user said "logical groups". If collapsed, maybe we just show the group icons and clicking them expands?
+                    The current implementation of sidebarCollapsed hides labels.
+                */}
+                {sidebarCollapsed && isExpanded && (
+                   <div className="mt-1 space-y-1">
+                     {groupTabs.map(t => (
+                        <button
+                          key={t.key}
+                          onClick={() => setTab(t.key)}
+                          title={lang === 'ar' ? t.label : t.labelEn}
+                          className={`w-full flex justify-center py-2 rounded-md transition ${
+                            tab === t.key 
+                              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' 
+                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <span className="text-lg">{t.icon}</span>
+                        </button>
+                     ))}
+                   </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
           {!sidebarCollapsed && (
             <div className="mb-3">
               <p className="font-medium text-slate-900 dark:text-white text-sm">{user.name}</p>
@@ -192,15 +421,32 @@ export default function AdminShell() {
 
         {/* Content - Full width */}
         <div className="p-6 lg:p-8 w-full max-w-6xl mx-auto space-y-6">
-          {tab === 'dashboard' && <DashboardPanel lang={lang} />}
-          {tab === 'analytics' && <AnalyticsPanel />}
-          {tab === 'monetization' && <MonetizationPanel />}
-          {tab === 'users' && <UsersPanel />}
-          {tab === 'content' && <ContentPanel />}
-          {tab === 'seo' && <SeoPanel />}
-          {tab === 'ads' && <AdsPanel />}
-          {tab === 'settings' && <SettingsPanel />}
-          {tab === 'tests' && <TestsPanel />}
+          <ErrorBoundary fallback={<div className="p-8 text-center text-red-600 bg-red-50 rounded-lg">حدث خطأ غير متوقع في لوحة التحكم. يرجى تحديث الصفحة.</div>}>
+            <Suspense fallback={<AdminLoadingSkeleton />}>
+              {tab === 'dashboard' && <DashboardPanel lang={lang} />}
+              {tab === 'analytics' && <AnalyticsPanel />}
+              {tab === 'analytics-definitions' && <AnalyticsDefinitionsPanel />}
+              {tab === 'experiments' && <ExperimentsPanel />}
+              {tab === 'monetization' && <MonetizationPanel />}
+              {tab === 'ad-inventory' && <AdInventoryPanel />}
+              {tab === 'users' && <UsersPanel />}
+              {tab === 'content' && <ContentPanel />}
+              {tab === 'calculators' && <CalculatorsPanel />}
+              {tab === 'flags' && <FeatureFlagsPanel />}
+              {tab === 'tools-features' && <ToolsFeaturesPanel />}
+              {tab === 'seo' && <SeoPanel />}
+              {tab === 'ads' && <AdsPanel />}
+              {tab === 'ai-integrations' && <AIIntegrationsPanel />}
+              {tab === 'maintenance' && <MaintenancePanel />}
+              {tab === 'settings' && <SettingsPanel />}
+              {tab === 'tests' && <TestsPanel />}
+              {tab === 'audit' && <AuditPanel />}
+              {tab === 'diagnostics' && <DiagnosticsPanel />}
+              {tab === 'errors' && <ErrorsPanel />}
+              {tab === 'jobs' && <JobsPanel />}
+              {tab === 'backups' && <BackupsPanel />}
+            </Suspense>
+          </ErrorBoundary>
         </div>
       </main>
     </div>
@@ -248,6 +494,8 @@ function DashboardPanel({ lang }: { lang: 'ar' | 'en' }) {
 
   return (
     <div className="space-y-6">
+      <HealthOverview lang={lang} />
+      
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title={labels.todayViews} value={stats?.today?.pageViews || 0} icon="👁️" />
         <StatCard title={labels.calculations} value={stats?.today?.calculations || 0} icon="🧮" />
@@ -293,6 +541,70 @@ function StatCard({ title, value, icon }: { title: string; value: string | numbe
           <p className="text-sm text-slate-600 dark:text-slate-400">{title}</p>
           <p className="text-2xl font-bold text-slate-900 dark:text-white">{value}</p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function HealthOverview({ lang }: { lang: 'ar' | 'en' }) {
+  const [health, setHealth] = useState<any>(null);
+
+  useEffect(() => {
+    fetch('/api/admin/ops/health', { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => setHealth(data))
+      .catch(console.error);
+  }, []);
+
+  if (!health) return null;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+      <HealthCard 
+        title="Database" 
+        status={health.db.status} 
+        detail={`${health.db.latencyMs}ms`} 
+        icon="🗄️" 
+      />
+      <HealthCard 
+        title="Queue" 
+        status={health.queue.status} 
+        detail={`${health.queue.pendingCount} pending`} 
+        icon="📥" 
+      />
+      <HealthCard 
+        title="Analytics" 
+        status={health.externalProviders.analytics.status} 
+        detail={health.externalProviders.analytics.latencyMs ? `${health.externalProviders.analytics.latencyMs}ms` : 'N/A'} 
+        icon="📈" 
+      />
+      <HealthCard 
+        title="Ads" 
+        status={health.externalProviders.ads.status} 
+        detail={health.externalProviders.ads.latencyMs ? `${health.externalProviders.ads.latencyMs}ms` : 'N/A'} 
+        icon="💰" 
+      />
+      <HealthCard 
+        title="App" 
+        status="OK" 
+        detail={`Uptime: ${Math.floor(health.app.uptime / 3600)}h`} 
+        icon="🚀" 
+      />
+    </div>
+  );
+}
+
+function HealthCard({ title, status, detail, icon }: { title: string; status: string; detail: string; icon: string }) {
+  const statusColor = status === 'OK' ? 'bg-green-500' : status === 'DEGRADED' ? 'bg-yellow-500' : 'bg-red-500';
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm border border-slate-100 dark:border-slate-700 flex items-center gap-3">
+      <div className="text-2xl">{icon}</div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">{title}</span>
+          <div className={`w-2 h-2 rounded-full ${statusColor}`}></div>
+        </div>
+        <div className="text-sm font-bold truncate">{detail}</div>
       </div>
     </div>
   );

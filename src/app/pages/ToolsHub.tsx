@@ -1,8 +1,58 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import SeoHead from '../../lib/seoHead';
 import AdSlot from '../../components/AdSlotShim';
 
+interface ToolCard {
+  id?: string;
+  slug: string;
+  icon: string;
+  titleAr: string;
+  titleEn: string;
+  descAr: string;
+  descEn: string;
+  isVisibleOnTools?: boolean;
+}
+
+// Default fallback tools
+const DEFAULT_TOOLS: ToolCard[] = [
+  {
+    slug: 'pay',
+    icon: '💰',
+    titleAr: 'حاسبة الراتب',
+    titleEn: 'Salary Calculator',
+    descAr: 'احسب راتبك الإجمالي والصافي مع خصم التأمينات الاجتماعية (GOSI) بدقة. تدعم النظام القديم والجديد 2025.',
+    descEn: 'Calculate your gross and net salary with accurate GOSI social insurance deductions. Supports both legacy and new 2025 rates.',
+  },
+  {
+    slug: 'eos',
+    icon: '📋',
+    titleAr: 'حاسبة نهاية الخدمة',
+    titleEn: 'End of Service Calculator',
+    descAr: 'احسب مكافأة نهاية الخدمة وفقاً لنظام العمل السعودي مع مراعاة نوع إنهاء العقد ومدة الخدمة.',
+    descEn: 'Calculate your end-of-service benefits under Saudi Labor Law, considering termination type and service duration.',
+  },
+  {
+    slug: 'work',
+    icon: '⏰',
+    titleAr: 'حاسبة ساعات العمل',
+    titleEn: 'Work Hours Calculator',
+    descAr: 'احسب وقت الخروج المتوقع وساعات العمل الأسبوعية والشهرية بناءً على وقت الحضور والاستراحة.',
+    descEn: 'Calculate your expected exit time and weekly/monthly work hours based on clock-in time and break duration.',
+  },
+  {
+    slug: 'dates',
+    icon: '📅',
+    titleAr: 'حاسبة التواريخ وأيام العمل',
+    titleEn: 'Dates & Working Days Calculator',
+    descAr: 'احسب الفرق بين تاريخين بالأيام التقويمية أو أيام العمل الفعلية مع مراعاة عطلات نهاية الأسبوع.',
+    descEn: 'Calculate the difference between two dates in calendar or working days, accounting for weekends.',
+  }
+];
+
 export default function ToolsHub({ lang }: { lang: 'ar' | 'en' }) {
+  const [tools, setTools] = useState<ToolCard[]>(DEFAULT_TOOLS);
+  const [loading, setLoading] = useState(true);
+
   const content = {
     en: {
       title: 'All Calculators & Tools | Calcu-Hub',
@@ -18,48 +68,22 @@ export default function ToolsHub({ lang }: { lang: 'ar' | 'en' }) {
     }
   };
 
-  const tools = [
-    {
-      id: 'pay',
-      icon: '💰',
-      title: { ar: 'حاسبة الراتب', en: 'Salary Calculator' },
-      description: { 
-        ar: 'احسب راتبك الإجمالي والصافي مع خصم التأمينات الاجتماعية (GOSI) بدقة. تدعم النظام القديم والجديد 2025.',
-        en: 'Calculate your gross and net salary with accurate GOSI social insurance deductions. Supports both legacy and new 2025 rates.'
-      },
-      path: '/calc?tab=pay'
-    },
-    {
-      id: 'eos',
-      icon: '📋',
-      title: { ar: 'حاسبة نهاية الخدمة', en: 'End of Service Calculator' },
-      description: { 
-        ar: 'احسب مكافأة نهاية الخدمة وفقاً لنظام العمل السعودي مع مراعاة نوع إنهاء العقد ومدة الخدمة.',
-        en: 'Calculate your end-of-service benefits under Saudi Labor Law, considering termination type and service duration.'
-      },
-      path: '/calc?tab=eos'
-    },
-    {
-      id: 'work',
-      icon: '⏰',
-      title: { ar: 'حاسبة ساعات العمل', en: 'Work Hours Calculator' },
-      description: { 
-        ar: 'احسب وقت الخروج المتوقع وساعات العمل الأسبوعية والشهرية بناءً على وقت الحضور والاستراحة.',
-        en: 'Calculate your expected exit time and weekly/monthly work hours based on clock-in time and break duration.'
-      },
-      path: '/calc?tab=work'
-    },
-    {
-      id: 'dates',
-      icon: '📅',
-      title: { ar: 'حاسبة التواريخ وأيام العمل', en: 'Dates & Working Days Calculator' },
-      description: { 
-        ar: 'احسب الفرق بين تاريخين بالأيام التقويمية أو أيام العمل الفعلية مع مراعاة عطلات نهاية الأسبوع.',
-        en: 'Calculate the difference between two dates in calendar or working days, accounting for weekends.'
-      },
-      path: '/calc?tab=dates'
-    }
-  ];
+  // Fetch tools from CMS
+  useEffect(() => {
+    fetch('/api/content/tools?tools=true', {
+      headers: { 'Accept-Language': lang }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.tools && data.tools.length > 0) {
+          setTools(data.tools);
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        setLoading(false);
+      });
+  }, [lang]);
 
   const upcomingTools = [
     {
@@ -96,37 +120,55 @@ export default function ToolsHub({ lang }: { lang: 'ar' | 'en' }) {
           <p className="text-sm sm:text-base text-slate-700 mt-2">{c.intro}</p>
         </div>
 
-        {/* Main Tools Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-          {tools.map((tool) => (
-            <a
-              key={tool.id}
-              href={tool.path}
-              onClick={(e) => { e.preventDefault(); navigateTo(tool.path); }}
-              className="group rounded-2xl border p-4 sm:p-5 bg-white shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between"
-            >
-              <div className="flex items-start gap-3 sm:gap-4">
-                <span className="text-2xl sm:text-3xl">{tool.icon}</span>
-                <div className="flex-1 space-y-2">
-                  <h2 className="font-semibold text-base sm:text-lg text-slate-900 group-hover:text-blue-600 transition-colors">
-                    {tool.title[lang]}
-                  </h2>
-                  <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
-                    {tool.description[lang]}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 flex justify-end">
-                <span className="inline-flex items-center text-xs sm:text-sm text-blue-600 group-hover:underline">
-                  {lang === 'ar' ? 'استخدم الحاسبة' : 'Use Calculator'}
-                  <span className={`text-base ${lang === 'ar' ? 'mr-1' : 'ml-1'}`} aria-hidden>
-                    {lang === 'ar' ? '←' : '→'}
-                  </span>
-                </span>
-              </div>
-            </a>
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        ) : (
+          /* Main Tools Grid */
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+            {tools.map((tool) => {
+              const path = `/calc?tab=${tool.slug}`;
+              
+              return (
+                <a
+                  key={tool.slug}
+                  href={path}
+                  onClick={(e) => { e.preventDefault(); navigateTo(path); }}
+                  className="group rounded-2xl border p-4 sm:p-5 bg-white shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between"
+                >
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <span className="text-2xl sm:text-3xl">{tool.icon}</span>
+                    <div className="flex-1 space-y-2">
+                      <h2 className="font-semibold text-base sm:text-lg text-slate-900 group-hover:text-blue-600 transition-colors">
+                        {(
+                          lang === 'ar'
+                            ? (tool.titleAr || tool.titleEn)
+                            : (tool.titleEn || tool.titleAr)
+                        ) || (lang === 'ar' ? 'بدون عنوان' : 'Untitled')}
+                      </h2>
+                      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                        {(
+                          lang === 'ar'
+                            ? (tool.descAr || tool.descEn)
+                            : (tool.descEn || tool.descAr)
+                        ) || ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <span className="inline-flex items-center text-xs sm:text-sm text-blue-600 group-hover:underline">
+                      {lang === 'ar' ? 'استخدم الحاسبة' : 'Use Calculator'}
+                      <span className={`text-base ${lang === 'ar' ? 'mr-1' : 'ml-1'}`} aria-hidden>
+                        {lang === 'ar' ? '←' : '→'}
+                      </span>
+                    </span>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <AdSlot slotId="tools-middle" position="inline" lang={lang} />

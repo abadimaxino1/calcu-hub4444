@@ -3,7 +3,285 @@ const express = require('express');
 const { prisma } = require('../db.cjs');
 const { PERMISSIONS, requirePermission } = require('../rbac.cjs');
 
+const { logAudit } = require('../lib/audit.cjs');
+const { createJob, JOB_TYPES } = require('../lib/jobs.cjs');
+const { getSystemHealth } = require('../lib/health.cjs');
+const rateLimit = require('express-rate-limit');
+
 const router = express.Router();
+
+const diagnosticsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // limit each IP to 10 diagnostic runs per window
+  message: { error: 'Too many diagnostic requests, please try again later.' }
+});
+
+// ============================================
+// Ops & Health
+// ============================================
+
+router.get('/health', requirePermission(PERMISSIONS.OPS_HEALTH_VIEW), async (req, res) => {
+  try {
+    const health = await getSystemHealth();
+    return res.json(health);
+  } catch (error) {
+    console.error('Health check error:', error);
+    return res.status(500).json({ error: 'Failed to retrieve system health' });
+  }
+});
+
+router.post('/diagnostics/run', requirePermission(PERMISSIONS.OPS_DIAGNOSTICS_RUN), diagnosticsLimiter, async (req, res) => {
+  try {
+    const { checks } = req.body;
+    const job = await createJob(JOB_TYPES.DIAGNOSTICS, { checks }, req);
+    
+    return res.json({ 
+      ok: true, 
+      jobId: job.id, 
+      requestId: req.requestId 
+    });
+  } catch (error) {
+    console.error('Diagnostics run error:', error);
+    return res.status(500).json({ error: 'Failed to start diagnostics' });
+  }
+});
+
+router.get('/diagnostics/runs', requirePermission(PERMISSIONS.OPS_DIAGNOSTICS_RUN), async (req, res) => {
+  try {
+    const { status, limit = 20 } = req.query;
+    const runs = await prisma.job.findMany({
+      where: { 
+        type: JOB_TYPES.DIAGNOSTICS,
+        status: status || undefined
+      },
+      orderBy: { createdAt: 'desc' },
+      take: parseInt(limit)
+    });
+    return res.json({ ok: true, runs });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to fetch diagnostic runs' });
+  }
+});
+
+router.get('/diagnostics/runs/:id', requirePermission(PERMISSIONS.OPS_DIAGNOSTICS_RUN), async (req, res) => {
+  try {
+    const run = await prisma.job.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    return res.json({ ok: true, run });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to fetch diagnostic run' });
+  }
+});
+
+// ============================================
+// Audit Logs
+// ============================================
+
+router.get('/audit-logs', requirePermission(PERMISSIONS.LOGS_READ), async (req, res) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 20, 
+      entityType, 
+      entityId, 
+      actorUserId, 
+      action,
+      severity,
+      startDate,
+      endDate,
+      search = '',
+      sortBy = 'occurredAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const where = {
+      entityType: entityType || undefined,
+      entityId: entityId || undefined,
+      actorUserId: actorUserId || undefined,
+      action: action || undefined,
+      severity: severity || undefined,
+      occurredAt: (startDate || endDate) ? {
+        gte: startDate ? new Date(startDate) : undefined,
+        lte: endDate ? new Date(endDate) : undefined,
+      } : undefined,
+      OR: search ? [
+        { entityType: { contains: search } },
+        { entityId: { contains: search } },
+        { action: { contains: search } },
+        { entityLabel: { contains: search } },
+        { actorRole: { contains: search } },
+        { actorIp: { contains: search } },
+      ] : undefined
+    };
+
+    const [logs, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { [sortBy]: sortOrder },
+        skip,
+        take,
+      }),
+      prisma.auditLog.count({ where })
+    ]);
+
+    // Enrich with user names if possible
+    const userIds = [...new Set(logs.map(l => l.actorUserId).filter(Boolean))];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true }
+    });
+    const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+
+    const enrichedLogs = logs.map(log => ({
+      ...log,
+      actorName: log.actorUserId ? userMap[log.actorUserId] : 'System'
+    }));
+
+    return res.json({ 
+      ok: true,
+      logs: enrichedLogs, 
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit)
+    });
+  } catch (error) {
+    console.error('Get audit logs error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/audit-logs/export', requirePermission(PERMISSIONS.LOGS_FULL), async (req, res) => {
+  try {
+    const { 
+      format = 'csv',
+      entityType, 
+      severity,
+      startDate,
+      endDate,
+      search = ''
+    } = req.query;
+
+    const where = {
+      entityType: entityType || undefined,
+      severity: severity || undefined,
+      occurredAt: (startDate || endDate) ? {
+        gte: startDate ? new Date(startDate) : undefined,
+        lte: endDate ? new Date(endDate) : undefined,
+      } : undefined,
+      OR: search ? [
+        { entityType: { contains: search } },
+        { action: { contains: search } },
+        { entityLabel: { contains: search } },
+      ] : undefined
+    };
+
+    const logs = await prisma.auditLog.findMany({
+      where,
+      orderBy: { occurredAt: 'desc' },
+      take: 5000 // Limit export size
+    });
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename=audit-logs.json');
+      return res.send(JSON.stringify(logs, null, 2));
+    }
+
+    // CSV Export
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=audit-logs.csv');
+    
+    const headers = ['ID', 'Time', 'Severity', 'Action', 'Entity', 'EntityID', 'Actor', 'Role', 'IP', 'Changes'];
+    res.write(headers.join(',') + '\n');
+
+    for (const log of logs) {
+      const row = [
+        log.id,
+        log.occurredAt.toISOString(),
+        log.severity,
+        log.action,
+        log.entityType,
+        log.entityId || '',
+        log.actorUserId || 'System',
+        log.actorRole || '',
+        log.actorIp || '',
+        (log.diffJson || '').replace(/"/g, '""') // Escape quotes for CSV
+      ];
+      res.write(row.map(val => `"${val}"`).join(',') + '\n');
+    }
+
+    return res.end();
+  } catch (error) {
+    console.error('Export audit logs error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ============================================
+// Jobs
+// ============================================
+
+router.get('/jobs', requirePermission(PERMISSIONS.SYSTEM_READ), async (req, res) => {
+  try {
+    const { page = 1, limit = 20, status } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const where = { status: status || undefined };
+
+    const [jobs, total] = await Promise.all([
+      prisma.job.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      prisma.job.count({ where })
+    ]);
+
+    return res.json({ 
+      jobs, 
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / take)
+      }
+    });
+  } catch (error) {
+    console.error('Get jobs error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/jobs/:id', requirePermission(PERMISSIONS.SYSTEM_READ), async (req, res) => {
+  try {
+    const job = await prisma.job.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    return res.json({ job });
+  } catch (error) {
+    console.error('Get job error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/jobs', requirePermission(PERMISSIONS.SYSTEM_UPDATE), async (req, res) => {
+  try {
+    const { type, payload } = req.body;
+    const job = await createJob(type, payload);
+    return res.json({ ok: true, job });
+  } catch (error) {
+    console.error('Create job error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // ============================================
 // System Settings
@@ -58,6 +336,10 @@ router.put('/settings/:key', requirePermission(PERMISSIONS.SETTINGS_UPDATE), asy
 
     const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
 
+    const before = await prisma.systemSetting.findUnique({
+      where: { key: req.params.key }
+    });
+
     const setting = await prisma.systemSetting.upsert({
       where: { key: req.params.key },
       update: {
@@ -73,16 +355,13 @@ router.put('/settings/:key', requirePermission(PERMISSIONS.SETTINGS_UPDATE), asy
       },
     });
 
-    // Log activity
-    await prisma.adminActivityLog.create({
-      data: {
-        adminUserId: req.user.id,
-        actionType: 'UPDATE_SETTING',
-        targetType: 'system_setting',
-        targetId: setting.id,
-        detailsJson: JSON.stringify({ key: req.params.key }),
-        ipAddress: req.ip,
-      },
+    await logAudit({
+      req,
+      action: before ? 'UPDATE' : 'CREATE',
+      entityType: 'SystemSetting',
+      entityId: setting.id,
+      beforeData: before,
+      afterData: setting
     });
 
     return res.json({ ok: true, setting });
@@ -127,6 +406,10 @@ router.put('/features/:key', requirePermission(PERMISSIONS.FEATURES_UPDATE), asy
   try {
     const { isEnabled, description } = req.body;
 
+    const before = await prisma.featureFlag.findUnique({
+      where: { key: req.params.key }
+    });
+
     const feature = await prisma.featureFlag.upsert({
       where: { key: req.params.key },
       update: {
@@ -140,16 +423,13 @@ router.put('/features/:key', requirePermission(PERMISSIONS.FEATURES_UPDATE), asy
       },
     });
 
-    // Log activity
-    await prisma.adminActivityLog.create({
-      data: {
-        adminUserId: req.user.id,
-        actionType: 'UPDATE_FEATURE_FLAG',
-        targetType: 'feature_flag',
-        targetId: feature.id,
-        detailsJson: JSON.stringify({ key: req.params.key, isEnabled: feature.isEnabled }),
-        ipAddress: req.ip,
-      },
+    await logAudit({
+      req,
+      action: before ? 'UPDATE' : 'CREATE',
+      entityType: 'FeatureFlag',
+      entityId: feature.id,
+      beforeData: before,
+      afterData: feature
     });
 
     return res.json({ ok: true, feature });

@@ -3,12 +3,58 @@
 
 require('dotenv').config();
 
+const Sentry = require("@sentry/node");
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+
+// Initialize Sentry
+if (process.env.NODE_ENV === 'production') {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN || "https://placeholder@sentry.io/123",
+    integrations: [
+      Sentry.httpIntegration({ tracing: true }),
+      Sentry.expressIntegration({ app }),
+    ],
+    tracesSampleRate: 0.1,
+    environment: process.env.NODE_ENV,
+    release: process.env.RELEASE_VERSION || "1.0.0",
+    beforeSend(event) {
+      // Sanitize request body
+      if (event.request && event.request.data) {
+        try {
+          const data = typeof event.request.data === 'string' ? JSON.parse(event.request.data) : event.request.data;
+          const sensitiveKeys = ['password', 'token', 'secret', 'apiKey', 'key'];
+          const sanitize = (obj) => {
+            for (const key in obj) {
+              if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk.toLowerCase()))) {
+                obj[key] = '[MASKED]';
+              } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+                sanitize(obj[key]);
+              }
+            }
+          };
+          sanitize(data);
+          event.request.data = JSON.stringify(data);
+        } catch (e) {
+          event.request.data = '[UNPARSABLE]';
+        }
+      }
+      return event;
+    },
+  });
+}
+
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
+const compression = require('compression');
+const requestIdMiddleware = require('./middleware/requestId.cjs');
+const auditMiddleware = require('./middleware/audit.cjs');
+const { processJobs, initScheduler } = require('./lib/jobs.cjs');
 
 // Import database and routes
 const { prisma } = require('./db.cjs');
@@ -17,19 +63,35 @@ const authRoutes = require('./routes/auth.cjs');
 const userRoutes = require('./routes/users.cjs');
 const analyticsRoutes = require('./routes/analytics.cjs');
 const contentRoutes = require('./routes/content.cjs');
+const contentPublicRoutes = require('./routes/content_public.cjs');
 const seoRoutes = require('./routes/seo.cjs');
 const adsRoutes = require('./routes/ads.cjs');
-const systemRoutes = require('./routes/system.cjs');
+const settingsRoutes = require('./routes/settings.cjs');
 const monetizationRoutes = require('./routes/monetization.cjs');
+const cmsRoutes = require('./routes/cms.cjs');
+const calculatorRoutes = require('./routes/calculators.cjs');
+const flagRoutes = require('./routes/flags.cjs');
+const analyticsMgmtRoutes = require('./routes/analytics_mgmt.cjs');
+const adsMgmtRoutes = require('./routes/ads_mgmt.cjs');
+const experimentRoutes = require('./routes/experiments.cjs');
+const seoMgmtRoutes = require('./routes/seo_mgmt.cjs');
+const aiMgmtRoutes = require('./routes/ai_mgmt.cjs');
+const adminRoutes = require('./routes/admin.cjs');
+const aiRoutes = require('./routes/ai.cjs');
+const opsRoutes = require('./routes/ops.cjs');
+const auditLogRoutes = require('./routes/audit.cjs');
+const { scheduleBackup } = require('./backup.cjs');
 
-const app = express();
 const PORT = process.env.PORT || 4000;
 
 // ============================================
 // Middleware Setup
 // ============================================
 
+app.use(requestIdMiddleware);
+app.use(auditMiddleware);
 app.use(express.json({ limit: '10mb' }));
+app.use(compression());
 app.use(cookieParser());
 app.use(cors({ origin: true, credentials: true }));
 app.use(morgan(process.env.LOG_FORMAT || 'dev'));
@@ -100,19 +162,28 @@ async function authMiddleware(req, res, next) {
 
     const session = await prisma.session.findUnique({
       where: { token },
-      include: { user: true },
     });
 
-    if (!session || session.expiresAt < new Date() || !session.user.isActive) {
+    const expiresAt = session?.expiresAt ? new Date(session.expiresAt) : null;
+    if (!session || !expiresAt || expiresAt < new Date()) {
+      req.user = null;
+      return next();
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+    });
+
+    if (!user || !user.isActive) {
       req.user = null;
       return next();
     }
 
     req.user = {
-      id: session.user.id,
-      email: session.user.email,
-      name: session.user.name,
-      role: session.user.role,
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
     };
 
     next();
@@ -156,34 +227,71 @@ app.use((req, res, next) => {
 });
 
 // ============================================
+// Public Static Files
+// ============================================
+
+app.get('/sitemap.xml', (req, res) => {
+  const sitemapPath = path.join(__dirname, 'runtime', 'sitemap.xml');
+  if (fs.existsSync(sitemapPath)) {
+    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.sendFile(sitemapPath);
+  }
+  res.status(404).send('Sitemap not generated yet');
+});
+
+app.get('/robots.txt', (req, res) => {
+  const robotsPath = path.join(__dirname, 'runtime', 'robots.txt');
+  if (fs.existsSync(robotsPath)) {
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.sendFile(robotsPath);
+  }
+  res.setHeader('Content-Type', 'text/plain');
+  res.send("User-agent: *\nDisallow: /admin\nDisallow: /api/admin\n");
+});
+
+// ============================================
 // API Routes
 // ============================================
 
-// Auth routes (with rate limiting)
+// Auth routes
 app.use('/api/auth', authLimiter, authRoutes);
-// Also keep /api/admin for backward compatibility
-app.use('/api/admin', authLimiter, authRoutes);
 
-// User management
+// Admin Management
 app.use('/api/admin/users', requireAuth, userRoutes);
+app.use('/api/admin/audit-logs', requireAuth, auditLogRoutes);
+app.use('/api/admin/calculators', requireAuth, calculatorRoutes);
+app.use('/api/admin/flags', requireAuth, flagRoutes);
+app.use('/api/admin/settings', requireAuth, settingsRoutes);
 
-// Analytics (tracking endpoints have their own limiter)
+// Ops & Health
+app.use('/api/admin/ops', requireAuth, opsRoutes);
+
+// Growth & Marketing
+app.use('/api/admin/growth/analytics', requireAuth, analyticsMgmtRoutes);
+app.use('/api/admin/growth/experiments', requireAuth, experimentRoutes);
+app.use('/api/admin/growth/seo', requireAuth, seoMgmtRoutes);
+
+// Revenue & Ads
+app.use('/api/admin/revenue/ads', requireAuth, adsMgmtRoutes);
+app.use('/api/admin/monetization', requireAuth, monetizationRoutes);
+
+// AI Management
+app.use('/api/admin/ai', requireAuth, aiMgmtRoutes);
+
+// Content & CMS
+app.use('/api/admin/content', requireAuth, contentRoutes);
+app.use('/api/admin/cms', requireAuth, cmsRoutes);
+app.use('/api/content', contentPublicRoutes);
+
+// Public & Mixed APIs
+app.use('/api/calculators', calculatorRoutes);
+app.use('/api/flags', flagRoutes);
 app.use('/api/analytics', trackingLimiter, analyticsRoutes);
-
-// Content management
-app.use('/api/content', contentRoutes);
-
-// SEO configuration
 app.use('/api/seo', seoRoutes);
-
-// Ads management
 app.use('/api/ads', adsRoutes);
-
-// Monetization (revenue models, analytics, alerts, forecasting)
-app.use('/api/admin/monetization', monetizationRoutes);
-
-// System settings
-app.use('/api/system', systemRoutes);
+app.use('/api/ai', requireAuth, aiRoutes);
 
 // Simple health check without auth
 app.get('/api/health', (req, res) => {
@@ -191,8 +299,14 @@ app.get('/api/health', (req, res) => {
 });
 
 // ============================================
-// Legacy API Compatibility
+// Aliases & Legacy Compatibility
 // ============================================
+
+// Forward /admin/audit-logs to /api/admin/audit-logs
+app.get('/admin/audit-logs', (req, res) => res.redirect('/api/admin/audit-logs'));
+app.get('/admin/backups', (req, res) => res.redirect('/api/admin/ops/backups'));
+app.get('/admin/jobs', (req, res) => res.redirect('/api/admin/ops/jobs'));
+app.get('/admin/health', (req, res) => res.redirect('/api/admin/ops/health'));
 
 // Legacy check endpoint
 app.get('/api/admin/check', async (req, res) => {
@@ -348,8 +462,39 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ============================================
+// Static Files (Production)
+// ============================================
+
+const distPath = path.join(__dirname, '../dist');
+
+// Serve static files with caching
+app.use(express.static(distPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.includes('assets')) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+}));
+
+// SPA Fallback
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  
+  res.sendFile(path.join(distPath, 'index.html'), (err) => {
+    if (err) next();
+  });
+});
+
+// ============================================
 // Error Handling
 // ============================================
+
+// Sentry error handler must be before any other error middleware and after all controllers
+if (process.env.NODE_ENV === 'production') {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
@@ -374,6 +519,12 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      
+      // Initialize Job Scheduler
+      if (typeof initScheduler === 'function') initScheduler();
+      
+      // Start background job processor
+      setInterval(processJobs, 5000); // Every 5 seconds
     });
   } catch (error) {
     console.error('Failed to start server:', error);
@@ -381,7 +532,9 @@ async function startServer() {
   }
 }
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
 
 // Graceful shutdown
 process.on('SIGINT', async () => {

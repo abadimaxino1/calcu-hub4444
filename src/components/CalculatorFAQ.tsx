@@ -35,14 +35,32 @@ export default function CalculatorFAQ({
 
   useEffect(() => {
     async function fetchFAQs() {
+      setLoading(true);
+      setFaqs([]);
+      setExpanded(new Set());
       try {
-        const res = await fetch(`/api/content/faqs?category=${category}&locale=${locale}`);
+        const res = await fetch(`/api/content/faqs?category=${category}&locale=${locale}`, {
+          headers: { 'Accept-Language': locale }
+        });
         if (res.ok) {
           const data = await res.json();
-          setFaqs(data.faqs || []);
+          const rawFaqs = data.faqs || [];
+          
+          // Strict fallback chain
+          const formattedFaqs = rawFaqs.map((f: any) => ({
+            ...f,
+            question: (locale === 'ar' 
+              ? (f.questionAr || f.question || f.questionEn) 
+              : (f.questionEn || f.question || f.questionAr)) || (locale === 'ar' ? 'بدون سؤال' : 'Untitled Question'),
+            answer: (locale === 'ar' 
+              ? (f.answerAr || f.answer || f.answerEn) 
+              : (f.answerEn || f.answer || f.answerAr)) || ''
+          }));
+
+          setFaqs(formattedFaqs);
           // Expand first FAQ if enabled
-          if (expandFirst && data.faqs?.length > 0) {
-            setExpanded(new Set([data.faqs[0].id]));
+          if (expandFirst && formattedFaqs.length > 0) {
+            setExpanded(new Set([formattedFaqs[0].id]));
           }
         }
       } catch (error) {
@@ -98,17 +116,17 @@ export default function CalculatorFAQ({
         {faqs.map((faq) => (
           <div 
             key={faq.id}
-            className="border rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-sm"
+            className="border rounded-xl overflow-hidden bg-white shadow-sm"
           >
             <button
               type="button"
-              className="w-full px-4 py-3 text-start font-medium flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              className="w-full px-4 py-3 text-start font-medium flex justify-between items-center hover:bg-slate-50 transition-colors"
               onClick={() => toggleExpand(faq.id)}
               aria-expanded={expanded.has(faq.id)}
             >
-              <span className="flex-1">{faq.question}</span>
+              <span className="flex-1 text-base text-slate-900">{faq.question}</span>
               <span 
-                className={`text-sm flex-shrink-0 text-slate-400 transition-transform inline-block ${expanded.has(faq.id) ? 'rotate-180' : ''}`} 
+                className={`text-sm flex-shrink-0 text-slate-600 transition-transform inline-block ${expanded.has(faq.id) ? 'rotate-180' : ''}`} 
                 aria-hidden
               >
                 ˅
@@ -116,8 +134,8 @@ export default function CalculatorFAQ({
             </button>
             
             {expanded.has(faq.id) && (
-              <div className="px-4 py-3 border-t bg-slate-50 dark:bg-slate-900">
-                <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
+              <div className="px-4 py-3 border-t">
+                <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
                   {faq.answer}
                 </p>
               </div>
@@ -178,17 +196,17 @@ export function StaticFAQ({
         {faqs.map((faq, index) => (
           <div 
             key={index}
-            className="border rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-sm"
+            className="border rounded-xl overflow-hidden bg-white shadow-sm"
           >
             <button
               type="button"
-              className="w-full px-4 py-3 text-start font-medium flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              className="w-full px-4 py-3 text-start font-medium flex justify-between items-center hover:bg-slate-50 transition-colors"
               onClick={() => toggleExpand(index)}
               aria-expanded={expanded.has(index)}
             >
-              <span className="flex-1">{faq.question}</span>
+              <span className="flex-1 text-base text-slate-900">{faq.question}</span>
               <span 
-                className={`text-sm flex-shrink-0 text-slate-400 transition-transform inline-block ${expanded.has(index) ? 'rotate-180' : ''}`} 
+                className={`text-sm flex-shrink-0 text-slate-600 transition-transform inline-block ${expanded.has(index) ? 'rotate-180' : ''}`} 
                 aria-hidden
               >
                 ˅
@@ -196,8 +214,8 @@ export function StaticFAQ({
             </button>
             
             {expanded.has(index) && (
-              <div className="px-4 py-3 border-t bg-slate-50 dark:bg-slate-900">
-                <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
+              <div className="px-4 py-3 border-t">
+                <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
                   {faq.answer}
                 </p>
               </div>

@@ -1,7 +1,51 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import SeoHead from '../../lib/seoHead';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 export default function TermsPage({ lang }: { lang: 'ar' | 'en' }) {
+  const [apiContent, setApiContent] = useState<string | null>(null);
+  const [apiTitle, setApiTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchPage = (l: string) => {
+      fetch(`/api/content/pages/terms?locale=${l}`, {
+        headers: { 'Accept-Language': l }
+      })
+        .then(r => {
+          if (!r.ok) throw new Error('Not found');
+          return r.json();
+        })
+        .then(async data => {
+          if (data.page) {
+            // StaticPageContent uses 'title' and 'content' fields (localized by row)
+            // We still use a fallback chain in case of partial data
+            const title = (l === 'ar' 
+              ? (data.page.titleAr || data.page.title || data.page.titleEn) 
+              : (data.page.titleEn || data.page.title || data.page.titleAr)) || '';
+            
+            const bodyMarkdown = (l === 'ar'
+              ? (data.page.bodyMarkdownAr || data.page.content || data.page.bodyMarkdownEn)
+              : (data.page.bodyMarkdownEn || data.page.content || data.page.bodyMarkdownAr)) || '';
+
+            setApiTitle(title);
+            if (bodyMarkdown) {
+              const html = await marked.parse(bodyMarkdown);
+              setApiContent(DOMPurify.sanitize(html));
+            }
+          }
+        })
+        .catch(() => {
+          if (l === lang) {
+            // Try other language as fallback
+            fetchPage(lang === 'ar' ? 'en' : 'ar');
+          }
+        });
+    };
+
+    fetchPage(lang);
+  }, [lang]);
+
   const content = {
     en: {
       title: 'Terms of Use | Calcu-Hub',
@@ -70,6 +114,19 @@ export default function TermsPage({ lang }: { lang: 'ar' | 'en' }) {
   };
 
   const c = content[lang];
+
+  if (apiContent) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">
+        <SeoHead title={apiTitle || c.title} description={c.meta} />
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-6">{apiTitle || c.h1}</h1>
+        <div 
+          className="prose prose-lg dark:prose-invert max-w-none"
+          dangerouslySetInnerHTML={{ __html: apiContent }} 
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">

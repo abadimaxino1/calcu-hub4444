@@ -1,18 +1,162 @@
-# Calcu Hub (Prototype)
+# Calcu-Hub - Saudi Work & Salary Calculators
 
-This is a Vite + React + TypeScript prototype containing multiple calculators (work hours, payroll, EOS, dates) with an in-app TestPanel.
+A comprehensive Progressive Web App (PWA) for salary calculations, end-of-service benefits, work hours, and date calculations tailored for Saudi Arabia.
 
-How to run (Windows PowerShell):
+## 🚀 Features
 
-```powershell
-cd C:\Users\abdul\calcu-hub
+### Public Calculators
+- **💰 Salary Calculator** - Calculate net salary after GOSI and deductions
+- **🏆 End of Service Calculator** - EOS benefits per Articles 84 & 85
+- **⏰ Work Hours Calculator** - Expected exit time and working hours
+- **📅 Date Calculator** - Date differences and working days (Gregorian & Hijri)
+
+### CMS (Content Management System)
+- **Dynamic Blog** - Bilingual blog posts with Markdown support
+- **FAQ Management** - Category-based FAQs (Global, Pay, EOS, Work, Dates)
+- **Tools & Features** - Manage calculator cards and "Why use" features
+- **SEO Management** - Per-page SEO configuration
+- **Static Pages** - Manage About, Privacy, Terms pages
+
+### Admin Panel
+- **Analytics Dashboard** - Usage metrics and statistics
+- **User Management** - Role-based access control (RBAC)
+- **Content Editor** - CRUD for blog posts, FAQs, tools, features
+- **Ad Configuration** - Manage AdSense slots
+- **Monetization Panel** - Revenue tracking and reporting
+
+### Progressive Web App (PWA)
+- **Offline Support** - Service Worker with smart caching strategies
+- **App Shortcuts** - Quick access to all 4 calculators
+- **Installable** - Add to home screen on mobile and desktop
+- **Responsive** - Works on all devices (iOS, Android, Windows, Mac)
+- **Bilingual** - Full Arabic and English support with RTL
+
+## 🛠️ Tech Stack
+
+- **Frontend**: React 18 + TypeScript + Vite
+- **Styling**: Tailwind CSS
+- **Backend**: Express + Prisma ORM
+- **Database**: SQLite (dev) / PostgreSQL (production ready)
+- **PWA**: Workbox Service Worker
+- **i18n**: Custom bilingual system with RTL support
+- **Auth**: Session-based with role-based access control
+
+## 📦 Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/abadimaxino1/calcu-hub4444.git
+cd calcu-hub4444
+
+# Install dependencies
 npm install
-npm run build:css    # optional: compile Tailwind from globals.css to tailwind-output.css
+
+# Setup database
+npx prisma generate
+npx prisma migrate dev
+
+# Start development server
 npm run dev
 ```
 
-Open http://localhost:5173 in your browser.
+## 🏗️ Build & Deploy
 
-Notes:
-- Tailwind output file `src/styles/tailwind-output.css` is included as a small placeholder for quick preview. For production, run the `build:css` script to generate full Tailwind output.
-- The in-app TestPanel is visible in the UI to run basic unit-like checks.
+```bash
+# Build for production
+npm run build
+
+# Run tests
+npm test
+
+# Preview production build
+npm run preview
+```
+
+## 📜 Scripts (Windows)
+
+### Server Management
+- `npm run stop:server`: Alias for `kill:4000` (stops the server).
+- `npm run kill:4000`: Forcefully terminates any process listening on port 4000.
+- `npm run dev:server`: Alias for starting the server (`node server/index.cjs`).
+- `npm run restart:server`: Kills the process on port 4000 and starts the server again.
+
+### Testing
+- `npm run test:smoke`: Runs the analytics API smoke test (unauthenticated).
+- `npm run test:smoke:auth`: Runs the analytics API smoke test (requires `CALCU_ADMIN_COOKIE`).
+- `npm run test:bool`: Runs the boolean type verification script.
+- `npm run restart:server:test`: Restarts server and runs smoke tests immediately.
+- `npm run restart:server:test:auth`: Restarts server and runs authenticated smoke tests.
+
+**Standard Smoke Test:**
+```powershell
+npm run restart:server:test
+```
+
+**Authenticated Smoke Test:**
+```powershell
+$env:CALCU_ADMIN_COOKIE="calcu_admin=..."
+npm run restart:server:test:auth
+```
+
+## �📱 Mobile Support
+
+The app is fully optimized for mobile devices:
+- Touch-friendly UI with minimum 44x44px touch targets
+- Responsive design for all screen sizes
+- iOS and Android PWA support
+- App shortcuts for quick access
+- Offline functionality
+
+## 🔐 Security
+
+- Content Security Policy (CSP) headers
+- HSTS ready (configure at server level)
+- X-Content-Type-Options: nosniff
+- Session-based authentication
+- Role-based access control (RBAC)
+
+## 📖 API Endpoints
+
+### Public APIs
+- `GET /api/cms/tools` - Get calculator tools
+- `GET /api/cms/features` - Get benefit features
+- `GET /api/cms/faqs?category=global` - Get FAQs
+- `GET /api/content/blog` - Get blog posts
+- `GET /api/content/blog/:slug` - Get single post
+
+### Admin APIs (Authenticated)
+- `/api/admin/*` - Admin panel routes
+- `/api/content/*` - Content management
+- `/api/cms/*` - CMS operations
+- `/api/seo/*` - SEO management
+- `/api/ads/*` - Ad configuration
+
+## 🎨 Customization
+
+### Adding New Calculator
+1. Add logic in `src/lib/`
+2. Create UI component in `src/app/pages/`
+3. Add to CMS via Admin Panel > Tools & Features
+4. Configure SEO via Admin Panel > SEO
+
+### Adding Blog Post
+1. Login to Admin Panel (`/admin`)
+2. Navigate to Content > Blog
+3. Create new post with bilingual content
+4. Publish when ready
+
+## 📄 License
+
+MIT License - see LICENSE file for details
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📧 Contact
+
+For questions or support, please open an issue on GitHub.
+
+---
+
+Made with ❤️ for Saudi Arabia

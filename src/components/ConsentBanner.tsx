@@ -2,63 +2,60 @@ import React, { useEffect, useState } from 'react';
 
 export function useConsentBanner() {
   const [showBanner, setShowBanner] = useState(false);
-  const [hasConsent, setHasConsent] = useState(false);
+  const [consent, setConsent] = useState({ analytics: false, ads: false });
 
   useEffect(() => {
-    const stored = localStorage.getItem('analytics-consent');
+    const stored = localStorage.getItem('calcu_consent');
     if (stored) {
-      setHasConsent(stored === 'true');
+      try {
+        setConsent(JSON.parse(stored));
+      } catch (e) {
+        setShowBanner(true);
+      }
     } else {
       setShowBanner(true);
     }
   }, []);
 
-  const accept = () => {
-    const obj = JSON.stringify({ analytics: true, ads: false });
-    try { localStorage.setItem('analytics-consent', 'true'); } catch(e) {}
-    try { localStorage.setItem('calcu_consent', obj); } catch(e) {}
-    setHasConsent(true);
+  const saveConsent = (newConsent: { analytics: boolean; ads: boolean }) => {
+    localStorage.setItem('calcu_consent', JSON.stringify(newConsent));
+    setConsent(newConsent);
     setShowBanner(false);
-    try { if ((window as any).__calcuConsentChanged) (window as any).__calcuConsentChanged(); } catch(e) {}
+    // Trigger global event for analytics/ads to react
+    window.dispatchEvent(new CustomEvent('calcu_consent_changed', { detail: newConsent }));
   };
 
-  const reject = () => {
-    const obj = JSON.stringify({ analytics: false, ads: false });
-    try { localStorage.setItem('analytics-consent', 'false'); } catch(e) {}
-    try { localStorage.setItem('calcu_consent', obj); } catch(e) {}
-    setHasConsent(false);
-    setShowBanner(false);
-    try { if ((window as any).__calcuConsentChanged) (window as any).__calcuConsentChanged(); } catch(e) {}
-  };
+  const acceptAll = () => saveConsent({ analytics: true, ads: true });
+  const rejectAll = () => saveConsent({ analytics: false, ads: false });
 
-  return { showBanner, hasConsent, accept, reject };
+  return { showBanner, consent, acceptAll, rejectAll, setShowBanner };
 }
 
 export function ConsentBanner({ lang }: { lang: 'ar' | 'en' }) {
-  const { showBanner, accept, reject } = useConsentBanner();
+  const { showBanner, acceptAll, rejectAll } = useConsentBanner();
 
   if (!showBanner) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900 text-white p-4 shadow-xl">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900 text-white p-4 shadow-xl border-t border-slate-700">
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="text-sm">
           {lang === 'ar'
-            ? 'نحن نستخدم تحليلات صديقة للخصوصية لتحسين الموقع. يمكنك الموافقة أو رفض جمع البيانات.'
-            : 'We use privacy-friendly analytics to improve the site. You can accept or decline.'}
+            ? 'نحن نستخدم ملفات تعريف الارتباط لتحسين تجربتك وتحليل حركة المرور وعرض إعلانات ذات صلة.'
+            : 'We use cookies to enhance your experience, analyze traffic, and show relevant ads.'}
         </div>
         <div className="flex gap-2">
           <button
-            onClick={reject}
-            className="px-4 py-2 rounded-lg border border-slate-500 hover:bg-slate-800"
+            onClick={rejectAll}
+            className="min-h-[44px] min-w-[88px] px-4 py-2 rounded-lg border border-slate-500 hover:bg-slate-800 touch-manipulation text-sm"
           >
-            {lang === 'ar' ? 'رفض' : 'Decline'}
+            {lang === 'ar' ? 'رفض الكل' : 'Reject All'}
           </button>
           <button
-            onClick={accept}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700"
+            onClick={acceptAll}
+            className="min-h-[44px] min-w-[88px] px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 touch-manipulation text-sm font-bold"
           >
-            {lang === 'ar' ? 'قبول' : 'Accept'}
+            {lang === 'ar' ? 'قبول الكل' : 'Accept All'}
           </button>
         </div>
       </div>

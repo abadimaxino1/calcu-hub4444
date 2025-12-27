@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { AdminDataTable, ColumnDef } from '../components/AdminDataTable';
 
 interface SystemSetting {
   id: string;
@@ -19,32 +20,123 @@ interface FeatureFlag {
   metadata: string;
 }
 
+interface AuditLog {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  ipAddress: string;
+  userAgent: string;
+  before: any;
+  after: any;
+  diff: any;
+  createdAt: string;
+}
+
+interface Job {
+  id: string;
+  type: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  payload: any;
+  result: any;
+  error: string;
+  attempts: number;
+  maxAttempts: number;
+  runAt: string;
+  completedAt: string;
+  createdAt: string;
+}
+
 export default function SettingsPanel() {
-  const [activeTab, setActiveTab] = useState<'settings' | 'features' | 'maintenance'>('settings');
+  const [activeTab, setActiveTab] = useState<'settings' | 'features' | 'maintenance' | 'audit' | 'jobs'>('settings');
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [features, setFeatures] = useState<FeatureFlag[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingItem, setEditingItem] = useState<any>(null);
 
+  // Query params for audit logs
+  const [params, setParams] = useState({
+    page: 1,
+    limit: 20,
+    search: '',
+    sortBy: 'createdAt',
+    sortOrder: 'desc' as 'asc' | 'desc'
+  });
+  
+  // New feature modal state
+  const [showAddFeature, setShowAddFeature] = useState(false);
+  const [newFeature, setNewFeature] = useState({
+    key: '',
+    name: '',
+    description: '',
+    isEnabled: false,
+    enabledForRoles: [] as string[],
+  });
+  
+  // Delete confirmation modal state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; featureId: string; featureName: string }>({
+    show: false,
+    featureId: '',
+    featureName: '',
+  });
+  
+  // Toast notification state
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({
+    show: false,
+    message: '',
+    type: 'success',
+  });
+  
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+  };
+
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, params]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       if (activeTab === 'settings') {
-        const response = await fetch('/api/system/settings', { credentials: 'include' });
+        const response = await fetch('/api/admin/settings', { credentials: 'include' });
         const data = await response.json();
         if (response.ok) {
-          setSettings(data.settings || []);
+          setSettings(Array.isArray(data) ? data : (data.settings || []));
         }
       } else if (activeTab === 'features') {
-        const response = await fetch('/api/system/features', { credentials: 'include' });
+        const response = await fetch('/api/admin/flags', { credentials: 'include' });
         const data = await response.json();
         if (response.ok) {
-          setFeatures(data.features || []);
+          setFeatures(Array.isArray(data) ? data : (data.features || []));
+        }
+      } else if (activeTab === 'audit') {
+        const query = new URLSearchParams({
+          page: String(params.page),
+          limit: String(params.limit),
+          search: params.search,
+          sortBy: params.sortBy,
+          sortOrder: params.sortOrder
+        }).toString();
+        const response = await fetch(`/api/admin/audit-logs?${query}`, { credentials: 'include' });
+        const data = await response.json();
+        if (response.ok) {
+          setAuditLogs(data.logs || []);
+          setTotalItems(data.total || data.pagination?.total || 0);
+        }
+      } else if (activeTab === 'jobs') {
+        const response = await fetch('/api/admin/ops/jobs', { credentials: 'include' });
+        const data = await response.json();
+        if (response.ok) {
+          setJobs(Array.isArray(data) ? data : (data.jobs || []));
         }
       }
     } catch (err) {
@@ -54,9 +146,40 @@ export default function SettingsPanel() {
     }
   };
 
+  const handleParamsChange = (newParams: any) => {
+    setParams(prev => ({ ...prev, ...newParams }));
+  };
+
+  const auditColumns: ColumnDef<AuditLog>[] = useMemo(() => [
+    { key: 'createdAt', header: 'التاريخ', sortable: true, render: (val) => new Date(val).toLocaleString('ar-SA') },
+    { key: 'userName', header: 'المستخدم', sortable: true, render: (val, item) => (
+      <div>
+        <div className="font-medium">{val}</div>
+        <div className="text-xs text-slate-500">{item.userEmail}</div>
+      </div>
+    )},
+    { key: 'action', header: 'الإجراء', sortable: true, render: (val) => {
+      const colors: any = { CREATE: 'text-green-600', UPDATE: 'text-blue-600', DELETE: 'text-red-600', LOGIN: 'text-purple-600' };
+      return <span className={`font-bold ${colors[val] || ''}`}>{val}</span>;
+    }},
+    { key: 'entityType', header: 'النوع', sortable: true },
+    { key: 'ipAddress', header: 'IP', sortable: true, render: (val) => <span className="font-mono text-xs">{val}</span> },
+  ], []);
+
+  const jobColumns: ColumnDef<Job>[] = useMemo(() => [
+    { key: 'createdAt', header: 'البدء', sortable: true, render: (val) => new Date(val).toLocaleString('ar-SA') },
+    { key: 'type', header: 'النوع', sortable: true },
+    { key: 'status', header: 'الحالة', sortable: true, render: (val) => {
+      const colors: any = { PENDING: 'bg-slate-100 text-slate-600', PROCESSING: 'bg-blue-100 text-blue-600', COMPLETED: 'bg-green-100 text-green-600', FAILED: 'bg-red-100 text-red-600' };
+      return <span className={`px-2 py-1 rounded-full text-xs ${colors[val] || ''}`}>{val}</span>;
+    }},
+    { key: 'attempts', header: 'المحاولات', render: (val, item) => `${val}/${item.maxAttempts}` },
+    { key: 'completedAt', header: 'الانتهاء', render: (val) => val ? new Date(val).toLocaleTimeString('ar-SA') : '-' },
+  ], []);
+
   const handleUpdateSetting = async (key: string, value: any) => {
     try {
-      const response = await fetch(`/api/system/settings/${key}`, {
+      const response = await fetch(`/api/admin/settings/${key}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -76,7 +199,7 @@ export default function SettingsPanel() {
 
   const handleToggleFeature = async (feature: FeatureFlag) => {
     try {
-      const response = await fetch(`/api/system/features/${feature.id}`, {
+      const response = await fetch(`/api/admin/flags/${feature.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -87,16 +210,72 @@ export default function SettingsPanel() {
         fetchData();
       } else {
         const data = await response.json();
-        alert(data.error || 'Failed to update');
+        showToast(data.error || 'Failed to update', 'error');
       }
     } catch (err) {
-      alert('Failed to update');
+      showToast('Failed to update', 'error');
+    }
+  };
+
+  const handleAddFeature = async () => {
+    if (!newFeature.key || !newFeature.name) {
+      showToast('الرجاء إدخال المفتاح والاسم', 'error');
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/admin/flags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(newFeature),
+      });
+
+      if (response.ok) {
+        setShowAddFeature(false);
+        setNewFeature({ key: '', name: '', description: '', isEnabled: false, enabledForRoles: [] });
+        showToast('تمت إضافة الميزة بنجاح', 'success');
+        fetchData();
+      } else {
+        const data = await response.json();
+        showToast(data.error || 'Failed to add feature', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to add feature', 'error');
+    }
+  };
+
+  const confirmDeleteFeature = (featureId: string, featureName: string) => {
+    setDeleteConfirm({ show: true, featureId, featureName });
+  };
+
+  const handleDeleteFeature = async () => {
+    const { featureId } = deleteConfirm;
+    setDeleteConfirm({ show: false, featureId: '', featureName: '' });
+    
+    try {
+      const response = await fetch(`/api/admin/flags/${featureId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        showToast('تم حذف الميزة بنجاح', 'success');
+        fetchData();
+      } else {
+        const data = await response.json();
+        showToast(data.error || 'Failed to delete', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to delete', 'error');
     }
   };
 
   const tabs = [
     { key: 'settings' as const, label: 'الإعدادات', icon: '⚙️' },
     { key: 'features' as const, label: 'الميزات', icon: '🚀' },
+    { key: 'audit' as const, label: 'سجل العمليات', icon: '📜' },
+    { key: 'jobs' as const, label: 'المهام', icon: '⏳' },
     { key: 'maintenance' as const, label: 'الصيانة', icon: '🔧' },
   ];
 
@@ -118,6 +297,41 @@ export default function SettingsPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
+          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm.show && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">تأكيد الحذف</h3>
+            <p className="text-slate-600 mb-4">
+              هل تريد حذف الميزة "{deleteConfirm.featureName}"؟
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteFeature}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              >
+                حذف
+              </button>
+              <button
+                onClick={() => setDeleteConfirm({ show: false, featureId: '', featureName: '' })}
+                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex items-center gap-4 border-b border-slate-200">
         {tabs.map((tab) => (
@@ -206,15 +420,88 @@ export default function SettingsPanel() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-slate-800">Feature Flags</h3>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+            <button 
+              onClick={() => setShowAddFeature(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+            >
               <span>+</span>
               <span>إضافة ميزة</span>
             </button>
           </div>
 
+          {/* Add Feature Modal */}
+          {showAddFeature && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
+                <h3 className="text-lg font-semibold mb-4">إضافة ميزة جديدة</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">المفتاح (key)</label>
+                    <input
+                      type="text"
+                      value={newFeature.key}
+                      onChange={(e) => setNewFeature({ ...newFeature, key: e.target.value })}
+                      placeholder="feature_key"
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">الاسم</label>
+                    <input
+                      type="text"
+                      value={newFeature.name}
+                      onChange={(e) => setNewFeature({ ...newFeature, name: e.target.value })}
+                      placeholder="اسم الميزة"
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">الوصف</label>
+                    <textarea
+                      value={newFeature.description}
+                      onChange={(e) => setNewFeature({ ...newFeature, description: e.target.value })}
+                      placeholder="وصف الميزة"
+                      rows={3}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="featureEnabled"
+                      checked={newFeature.isEnabled}
+                      onChange={(e) => setNewFeature({ ...newFeature, isEnabled: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                    <label htmlFor="featureEnabled" className="text-sm text-slate-700">مفعّل</label>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={handleAddFeature}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  >
+                    إضافة
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAddFeature(false);
+                      setNewFeature({ key: '', name: '', description: '', isEnabled: false, enabledForRoles: [] });
+                    }}
+                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {features.length === 0 ? (
             <div className="bg-slate-50 rounded-lg p-8 text-center text-slate-600">
-              لا توجد ميزات.
+              <p className="mb-4">لا توجد ميزات.</p>
+              <p className="text-sm text-slate-500">اضغط على "إضافة ميزة" لإنشاء ميزة جديدة.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -232,18 +519,28 @@ export default function SettingsPanel() {
                         {feature.key}
                       </p>
                     </div>
-                    <button
-                      onClick={() => handleToggleFeature(feature)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                        feature.isEnabled ? 'bg-green-600' : 'bg-slate-200'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                          feature.isEnabled ? 'translate-x-6' : 'translate-x-1'
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleToggleFeature(feature)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                          feature.isEnabled ? 'bg-green-600' : 'bg-slate-200'
                         }`}
-                      />
-                    </button>
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                            feature.isEnabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                      <button
+                        onClick={() => confirmDeleteFeature(feature.id, feature.name)}
+                        className="text-red-500 hover:text-red-700 text-sm p-1"
+                        title="حذف"
+                        aria-label="حذف الميزة"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                   <p className="text-sm text-slate-600 mb-3">{feature.description}</p>
                   {feature.enabledForRoles && feature.enabledForRoles.length > 0 && (
@@ -362,12 +659,11 @@ export default function SettingsPanel() {
           <div className="bg-white rounded-xl shadow p-6">
             <h3 className="text-lg font-semibold mb-4">سجل النظام</h3>
             <div className="bg-slate-900 rounded-lg p-4 font-mono text-sm text-green-400 h-64 overflow-auto" dir="ltr">
-              <p>[2024-01-15 10:00:00] Server started</p>
-              <p>[2024-01-15 10:00:01] Database connected</p>
-              <p>[2024-01-15 10:00:02] Cache initialized</p>
-              <p>[2024-01-15 10:05:32] User login: admin@calcuhub.com</p>
-              <p>[2024-01-15 10:10:15] Page cache cleared</p>
-              <p>[2024-01-15 10:15:00] Sitemap regenerated (45 URLs)</p>
+              <p>[{new Date().toISOString().split('T')[0]} 10:00:00] Server started</p>
+              <p>[{new Date().toISOString().split('T')[0]} 10:00:01] Database connected</p>
+              <p>[{new Date().toISOString().split('T')[0]} 10:00:02] Cache initialized</p>
+              <p>[{new Date().toISOString().split('T')[0]} 10:10:15] Page cache cleared</p>
+              <p>[{new Date().toISOString().split('T')[0]} 10:15:00] Sitemap regenerated</p>
               <p className="text-slate-500">...</p>
             </div>
             <div className="mt-3 flex justify-end">
@@ -399,6 +695,41 @@ export default function SettingsPanel() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'audit' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-800">سجل العمليات (Audit Log)</h3>
+          </div>
+          <AdminDataTable
+            columns={auditColumns}
+            data={auditLogs}
+            serverSide
+            totalItems={totalItems}
+            onParamsChange={handleParamsChange}
+            keyField="id"
+          />
+        </div>
+      )}
+
+      {activeTab === 'jobs' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-800">المهام الخلفية (Background Jobs)</h3>
+            <button
+              onClick={() => fetchData()}
+              className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 text-sm"
+            >
+              تحديث
+            </button>
+          </div>
+          <AdminDataTable
+            columns={jobColumns}
+            data={jobs}
+            keyField="id"
+          />
         </div>
       )}
     </div>

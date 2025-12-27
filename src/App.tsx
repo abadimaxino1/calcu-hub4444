@@ -12,14 +12,18 @@ import HomePage from './app/pages/HomePage';
 import AboutPage from './app/pages/About';
 import PrivacyPage from './app/pages/Privacy';
 import TermsPage from './app/pages/Terms';
+import PreviewPage from './app/pages/Preview';
 import SeoHead from './lib/seo';
-import AdSlotShim from './components/AdSlotShim';
+import AdSlot from './components/AdSlot';
 import CalculatorFAQ, { StaticFAQ } from './components/CalculatorFAQ';
 import { ConsentBanner } from './components/ConsentBanner';
 import { diffBetween, calculateWorkingDays, WeekendConfig, toHijri, fromHijri, formatHijri } from "./lib/dates";
 import { useTranslation, useLocale } from './i18n';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import LanguageSwitcher from './components/LanguageSwitcher';
+import SalaryComparison from './components/SalaryComparison';
+import CmsContent from './components/CmsContent';
+import { trackPageView } from './lib/analytics';
 
 const AdminShell = React.lazy(() => import('./admin/AdminShell'));
 
@@ -38,6 +42,7 @@ const tabs = [
   { id: "pay" as const, labelAr: "الراتب", labelEn: "Payroll" },
   { id: "eos" as const, labelAr: "نهاية الخدمة", labelEn: "End of Service" },
   { id: "dates" as const, labelAr: "التواريخ", labelEn: "Dates" },
+  { id: "compare" as const, labelAr: "مقارنة الرواتب", labelEn: "Salary Comparison" },
 ];
 
 // Static FAQ data for each calculator (fallback when API has no data)
@@ -126,23 +131,6 @@ function dayOfMonth(d = new Date()) {
   return d.getDate();
 }
 
-// AdSlot component - uses AdSlotShim for proper ad handling
-function AdSlot({ slotId, position, lang }: { slotId: string; position: "header" | "inline" | "sidebar" | "footer"; lang: Lang }) {
-  // Use the AdSlotShim component which handles loading states, visibility, and production ads
-  // Don't render anything if ads are not enabled (clean layout when no AdSense configured)
-  const enabled = isAdSlotEnabled(slotId);
-  if (!enabled) {
-    // In development, show minimal placeholder; in production, render nothing
-    if (process.env.NODE_ENV === 'development') {
-      return (
-        <div className="h-1 my-2" data-ad-slot={slotId} data-ad-position={position} aria-hidden />
-      );
-    }
-    return null;
-  }
-  return <AdSlotShim slotId={slotId} position={position} lang={lang} showPlaceholder={false} />;
-}
-
 // Simple API stubs
 export const api = {
   async logCalculationEvent(type: string, payload?: any) {
@@ -172,12 +160,14 @@ function usePageTitle(tabId: string, lang: Lang) {
       pay: { ar: "حاسبة الراتب في السعودية | Calcu-Hub", en: "Salary Calculator – Saudi Arabia | Calcu-Hub" },
       eos: { ar: "حاسبة نهاية الخدمة | Calcu-Hub", en: "End of Service Calculator – Saudi Arabia | Calcu-Hub" },
       dates: { ar: "حاسبة أيام العمل والتواريخ | Calcu-Hub", en: "Dates & Working Days Calculator | Calcu-Hub" },
+      compare: { ar: "مقارنة عروض العمل والرواتب | Calcu-Hub", en: "Salary & Job Offer Comparison | Calcu-Hub" },
     };
     const descs: Record<string, { ar: string; en: string }> = {
       work: { ar: "احسب وقت الخروج وساعات العمل بدقة حسب ساعات الدوام المعتمدة في نظام العمل السعودي.", en: "Calculate your work end time and hours accurately based on Saudi Labor Law working hours." },
       pay: { ar: "حاسبة الراتب السعودية. احسب راتبك الإجمالي والصافي مع خصم التأمينات الاجتماعية (جوسي) بدقة.", en: "Saudi Salary Calculator. Compute gross-to-net pay with accurate GOSI social insurance deductions." },
       eos: { ar: "احسب مستحقات نهاية الخدمة بدقة وفقاً لنظام العمل السعودي.", en: "Accurately calculate End-of-Service benefits under Saudi Labor Law." },
       dates: { ar: "احسب الأيام بين تاريخين أو أيام العمل الفعلية مع مراعاة عطلات نهاية الأسبوع والعطل الرسمية.", en: "Calculate calendar or working days between two dates, accounting for weekends and public holidays." },
+      compare: { ar: "قارن بين عرضين وظيفيين واحسب الفرق في الراتب الصافي والمميزات.", en: "Compare two job offers and calculate the difference in net salary and benefits." },
     };
     const t = titles[tabId] || titles.pay;
     const d = descs[tabId] || descs.pay;
@@ -257,6 +247,15 @@ export default function App() {
       }
     })();
   }, []);
+
+  // Initialize analytics and ads on mount
+  useEffect(() => {
+    (async () => {
+      const analytics = await import('./lib/analytics');
+      analytics.initAnalytics();
+    })();
+  }, []);
+
   // simple router state (for /admin and a couple of static pages)
   const [route, setRoute] = useState(() => typeof window !== 'undefined' ? window.location.pathname : '/');
 
@@ -272,6 +271,12 @@ export default function App() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+
+  // Track page views on route or tab change
+  useEffect(() => {
+    const path = route === '/calc' ? `/calc/${tab}` : route;
+    trackPageView(path);
+  }, [route, tab]);
 
   // Direction is now managed by i18n/index.ts
 
@@ -311,6 +316,36 @@ export default function App() {
       window.location.reload();
     }
   };
+
+  // Check if we're on admin route to hide main app chrome
+  // Handle /admin, /admin/, /admin/login, /admin/dashboard, etc.
+  const isAdminRoute = route === '/admin' || route.startsWith('/admin/') || route.startsWith('/admin');
+
+  // Hide body scrolling when on admin routes to prevent any main app content from showing
+  React.useEffect(() => {
+    if (isAdminRoute) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [isAdminRoute]);
+
+  // For admin routes, render only the AdminShell with complete isolation
+  if (isAdminRoute) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-white overflow-auto">
+        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
+          <AdminShell />
+        </React.Suspense>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -359,7 +394,7 @@ export default function App() {
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   className={cx(
-                    "px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl border text-xs sm:text-sm truncate",
+                    "px-2 sm:px-3 min-h-[44px] rounded-lg sm:rounded-xl border text-xs sm:text-sm truncate touch-manipulation",
                     tab === t.id ? "bg-blue-600 text-white border-blue-600" : "bg-white hover:bg-slate-50"
                   )}
                   aria-current={tab === t.id ? "page" : undefined}
@@ -375,11 +410,11 @@ export default function App() {
       {/* Service worker update banner */}
       {swUpdated && (
         <div className="max-w-5xl mx-auto px-4 py-2">
-          <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3 flex items-center justify-between">
-            <div className="text-sm">{lang === 'ar' ? 'تحديث جديد متاح' : 'A new version is available'}</div>
-            <div className="flex gap-2">
-              <button className="px-3 py-1 rounded-lg border bg-white" onClick={() => setSwUpdated(false)}>{lang === 'ar' ? 'تجاهل' : 'Dismiss'}</button>
-              <button className="px-3 py-1 rounded-lg bg-blue-600 text-white" onClick={applyUpdate}>{lang === 'ar' ? 'تحديث الآن' : 'Update now'}</button>
+          <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3 flex flex-col sm:flex-row items-center gap-3">
+            <div className="text-sm flex-1">{lang === 'ar' ? 'تحديث جديد متاح' : 'A new version is available'}</div>
+            <div className="flex gap-2 flex-shrink-0">
+              <button className="px-4 min-h-[44px] min-w-[44px] rounded-lg border bg-white touch-manipulation" onClick={() => setSwUpdated(false)}>{lang === 'ar' ? 'تجاهل' : 'Dismiss'}</button>
+              <button className="px-4 min-h-[44px] min-w-[44px] rounded-lg bg-blue-600 text-white touch-manipulation" onClick={applyUpdate}>{lang === 'ar' ? 'تحديث الآن' : 'Update now'}</button>
             </div>
           </div>
         </div>
@@ -387,7 +422,7 @@ export default function App() {
 
       <main className="w-full py-6 space-y-8">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <AdSlot slotId="hdr-1" position="header" lang={lang} />
+          <AdSlot placement="header" />
         </div>
 
         {route === '/' ? (
@@ -404,10 +439,8 @@ export default function App() {
             {tab === "pay" && <Payroll lang={lang} />}
             {tab === "eos" && <EosCalc lang={lang} />}
             {tab === "dates" && <DatesCalculator lang={lang} />}
+            {tab === "compare" && <SalaryComparison />}
           </div>
-        ) : route === '/admin' ? (
-          // AdminShell renders below; keep main content empty to avoid duplicate login UI
-          null
         ) : route === '/privacy' ? (
           <PrivacyPage lang={lang} />
         ) : route === '/terms' ? (
@@ -422,6 +455,8 @@ export default function App() {
           <BlogPage lang={lang} />
         ) : route === '/article' ? (
           <ArticlePage lang={lang} />
+        ) : route.startsWith('/preview/') ? (
+          <PreviewPage lang={lang} />
         ) : (
           // 404 fallback - redirect to home
           <HomePage 
@@ -434,14 +469,14 @@ export default function App() {
         )}
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
-          <AdSlot slotId="inline-1" position="inline" lang={lang} />
+          <AdSlot placement="inline" />
 
           {/* TestPanel: Only visible for authenticated admins in development mode */}
           {isAdmin && showTests && <TestPanel lang={lang} />}
         </div>
       </main>
 
-      <AdSlot slotId="ft-1" position="footer" lang={lang} />
+      <AdSlot placement="footer" />
 
       <footer className="border-t bg-white/50">
         <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 text-[10px] sm:text-xs text-slate-600 flex flex-col gap-3 sm:gap-2 md:flex-row md:items-center md:justify-between">
@@ -460,12 +495,6 @@ export default function App() {
       </footer>
 
       <ConsentBanner lang={lang} />
-      {/* Admin routes: lazy load admin shell */}
-      {(route === '/admin' || route === '/admin/login') && (
-        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
-          <AdminShell />
-        </React.Suspense>
-      )}
       {typeof window !== 'undefined' && (() => {
         try {
           // trigger analytics loader if consent already present; listen for later changes via global
@@ -721,10 +750,11 @@ function WorkHours({ lang }: { lang: Lang }) {
 
       <p className="text-xs text-slate-600 mt-3">{lang === "ar" ? "ملاحظة: الانصراف = الحضور + ساعات العمل + دقائق الاستراحة (إذا كانت مدفوعة تُحتسب ضمن الزمن)." : "Note: clock-out = clock-in + work hours + break (if paid, it's included in time)."}</p>
 
-      {/* FAQ Section */}
-      <StaticFAQ
-        faqs={STATIC_FAQS.work[lang]}
-        title={lang === "ar" ? "أسئلة شائعة عن ساعات العمل" : "Work Hours FAQ"}
+      {/* CMS Content & FAQ Section */}
+      <CmsContent 
+        slug="work-hours-calculator" 
+        fallbackFaqs={STATIC_FAQS.work[lang]}
+        fallbackTitle={lang === "ar" ? "ساعات العمل" : "Work Hours"}
       />
     </Card>
   );
@@ -771,7 +801,14 @@ function Payroll({ lang }: { lang: Lang }) {
   const isN2G = mode === 'net2gross';
 
   return (
-    <Card title={lang === "ar" ? "حاسبة الراتب" : "Payroll Calculator"} actions={<small className="text-[10px] sm:text-xs text-slate-600 hidden sm:inline">{lang === "ar" ? "إجمالي↔صافي + تأمين" : "Gross↔Net + Insurance"}</small>}>
+    <Card title={lang === "ar" ? "حاسبة الراتب" : "Payroll Calculator"} actions={
+      <div className="flex items-center gap-2">
+        <button onClick={() => window.print()} className="text-xs sm:text-sm px-3 min-h-[44px] flex items-center justify-center rounded-lg border hover:bg-slate-50 text-slate-700" title={lang === "ar" ? "طباعة / حفظ PDF" : "Print / Save PDF"}>
+          🖨️
+        </button>
+        <small className="text-[10px] sm:text-xs text-slate-600 hidden sm:inline">{lang === "ar" ? "إجمالي↔صافي + تأمين" : "Gross↔Net + Insurance"}</small>
+      </div>
+    }>
       <div className="rounded-lg sm:rounded-xl border p-2 sm:p-3 mb-3 sm:mb-4 flex flex-wrap gap-1.5 sm:gap-2 items-center text-[10px] sm:text-sm">
         <span className="text-slate-700 font-medium">{lang === "ar" ? "التأمينات:" : "GOSI:"}</span>
         <button className="px-3 min-h-[44px] flex items-center justify-center rounded-lg border hover:bg-slate-50 text-slate-700" onClick={() => { setResident('saudi'); setInsEmpPct(9.75); setInsErPct(12); setInsBase('gosi'); }}>{lang === "ar" ? "النظام القائم" : "Legacy"}</button>
@@ -938,10 +975,11 @@ function Payroll({ lang }: { lang: Lang }) {
         </div>
       </div>
 
-      {/* FAQ Section */}
-      <StaticFAQ
-        faqs={STATIC_FAQS.pay[lang]}
-        title={lang === "ar" ? "أسئلة شائعة عن الراتب" : "Salary FAQ"}
+      {/* CMS Content & FAQ Section */}
+      <CmsContent 
+        slug="payroll-calculator" 
+        fallbackFaqs={STATIC_FAQS.pay[lang]}
+        fallbackTitle={lang === "ar" ? "الراتب" : "Payroll"}
       />
     </Card>
   );
@@ -978,7 +1016,14 @@ function EosCalc({ lang }: { lang: Lang }) {
   const result = useMemo(() => calcEOS({ start, end, basic, housingMode, housingPercent, housingFixed, baseType, monthDivisor, leaveDays, separation: separation as any, extras, deductions }), [start,end,basic,housingMode,housingPercent,housingFixed,baseType,monthDivisor,leaveDays,separation,extras,deductions]);
 
   return (
-    <Card title={lang === 'ar' ? 'حاسبة نهاية الخدمة' : 'End of Service Calculator'} actions={<button className="text-xs sm:text-sm px-3 min-h-[44px] flex items-center justify-center rounded-lg border hover:bg-slate-50 text-slate-700" onClick={() => { const t=new Date().toISOString().slice(0,10); setEnd(t); }}>{lang==='ar'? 'اليوم' : 'Today'}</button>}>
+    <Card title={lang === 'ar' ? 'حاسبة نهاية الخدمة' : 'End of Service Calculator'} actions={
+      <div className="flex items-center gap-2">
+        <button onClick={() => window.print()} className="text-xs sm:text-sm px-3 min-h-[44px] flex items-center justify-center rounded-lg border hover:bg-slate-50 text-slate-700" title={lang === "ar" ? "طباعة / حفظ PDF" : "Print / Save PDF"}>
+          🖨️
+        </button>
+        <button className="text-xs sm:text-sm px-3 min-h-[44px] flex items-center justify-center rounded-lg border hover:bg-slate-50 text-slate-700" onClick={() => { const t=new Date().toISOString().slice(0,10); setEnd(t); }}>{lang==='ar'? 'اليوم' : 'Today'}</button>
+      </div>
+    }>
       <div className="grid md:grid-cols-3 gap-3 sm:gap-4">
         <div className="rounded-lg sm:rounded-xl border p-2 sm:p-3">
           <label className="block text-[10px] sm:text-sm text-slate-700 mb-0.5 sm:mb-1">{lang==='ar'? 'تاريخ بداية الخدمة' : 'Start Date'}</label>
@@ -1040,10 +1085,11 @@ function EosCalc({ lang }: { lang: Lang }) {
         </div>
       </div>
 
-      {/* FAQ Section */}
-      <StaticFAQ
-        faqs={STATIC_FAQS.eos[lang]}
-        title={lang === "ar" ? "أسئلة شائعة عن نهاية الخدمة" : "End of Service FAQ"}
+      {/* CMS Content & FAQ Section */}
+      <CmsContent 
+        slug="eos-calculator" 
+        fallbackFaqs={STATIC_FAQS.eos[lang]}
+        fallbackTitle={lang === "ar" ? "نهاية الخدمة" : "End of Service"}
       />
     </Card>
   );
@@ -1053,6 +1099,22 @@ function EosCalc({ lang }: { lang: Lang }) {
 // Dates Calculator
 // =============================================================
 // diffBetween, calculateWorkingDays are implemented in src/lib/dates
+
+// Hijri months with numbers for user clarity
+const HIJRI_MONTHS_LIST = [
+  { num: 1, en: 'Muharram', ar: 'محرم' },
+  { num: 2, en: 'Safar', ar: 'صفر' },
+  { num: 3, en: 'Rabi al-Awwal', ar: 'ربيع الأول' },
+  { num: 4, en: 'Rabi al-Thani', ar: 'ربيع الثاني' },
+  { num: 5, en: 'Jumada al-Awwal', ar: 'جمادى الأولى' },
+  { num: 6, en: 'Jumada al-Thani', ar: 'جمادى الآخرة' },
+  { num: 7, en: 'Rajab', ar: 'رجب' },
+  { num: 8, en: 'Shaban', ar: 'شعبان' },
+  { num: 9, en: 'Ramadan', ar: 'رمضان' },
+  { num: 10, en: 'Shawwal', ar: 'شوال' },
+  { num: 11, en: 'Dhu al-Qadah', ar: 'ذو القعدة' },
+  { num: 12, en: 'Dhu al-Hijjah', ar: 'ذو الحجة' },
+];
 
 function DatesCalculator({ lang }: { lang: Lang }) {
   const [calendarType, setCalendarType] = useState<'gregorian' | 'hijri'>('gregorian');
@@ -1172,14 +1234,27 @@ function DatesCalculator({ lang }: { lang: Lang }) {
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'شهر' : 'Month'}</label>
-                <input type="number" min={1} max={12} value={hijriStartM} onChange={e => setHijriStartM(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
+                <select 
+                  value={hijriStartM} 
+                  onChange={e => setHijriStartM(+e.target.value)} 
+                  className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900"
+                >
+                  {HIJRI_MONTHS_LIST.map(m => (
+                    <option key={m.num} value={m.num}>
+                      {m.num} - {lang === 'ar' ? m.ar : m.en}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'سنة' : 'Year'}</label>
                 <input type="number" min={1300} max={1500} value={hijriStartY} onChange={e => setHijriStartY(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
               </div>
             </div>
-            <div className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2">{a.toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}</div>
+            <div className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2">
+              {lang === 'ar' ? 'الموافق: ' : 'Gregorian: '}
+              {a.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
           </div>
           <div className="rounded-lg sm:rounded-xl border p-2 sm:p-3">
             <div className="text-[10px] sm:text-sm mb-1 sm:mb-2 font-medium text-slate-900">{lang === 'ar' ? 'إلى (هجري)' : 'To (Hijri)'}</div>
@@ -1190,14 +1265,27 @@ function DatesCalculator({ lang }: { lang: Lang }) {
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'شهر' : 'Month'}</label>
-                <input type="number" min={1} max={12} value={hijriEndM} onChange={e => setHijriEndM(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
+                <select 
+                  value={hijriEndM} 
+                  onChange={e => setHijriEndM(+e.target.value)} 
+                  className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900"
+                >
+                  {HIJRI_MONTHS_LIST.map(m => (
+                    <option key={m.num} value={m.num}>
+                      {m.num} - {lang === 'ar' ? m.ar : m.en}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-[10px] sm:text-xs text-slate-500">{lang === 'ar' ? 'سنة' : 'Year'}</label>
                 <input type="number" min={1300} max={1500} value={hijriEndY} onChange={e => setHijriEndY(+e.target.value)} className="w-full rounded-lg border p-1.5 sm:p-2 text-xs sm:text-sm text-slate-900" />
               </div>
             </div>
-            <div className="text-xs text-slate-500 mt-2">{b.toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}</div>
+            <div className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2">
+              {lang === 'ar' ? 'الموافق: ' : 'Gregorian: '}
+              {b.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
           </div>
         </div>
       )}
@@ -1306,10 +1394,11 @@ function DatesCalculator({ lang }: { lang: Lang }) {
         </ul>
       </div>
 
-      {/* FAQ Section */}
-      <StaticFAQ
-        faqs={STATIC_FAQS.dates[lang]}
-        title={lang === "ar" ? "أسئلة شائعة عن حسابات التواريخ" : "Date Calculator FAQ"}
+      {/* CMS Content & FAQ Section */}
+      <CmsContent 
+        slug="date-calculator" 
+        fallbackFaqs={STATIC_FAQS.dates[lang]}
+        fallbackTitle={lang === "ar" ? "حسابات التواريخ" : "Date Calculator"}
       />
     </Card>
   );

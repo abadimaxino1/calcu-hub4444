@@ -2,10 +2,10 @@
 // Run with: node scripts/seed-database.mjs
 
 import 'dotenv/config';
-import { PrismaClient } from '../src/generated/prisma/client.js';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { prisma } = require('./_prisma.cjs');
 
 async function main() {
   console.log('🌱 Seeding database...');
@@ -393,18 +393,23 @@ contact@calcuhub.com`,
   // Create Feature Flags
   // ============================================
   const features = [
-    { key: 'hijri_calendar', isEnabled: true, description: 'Enable Hijri calendar support in calculators' },
-    { key: 'dark_mode', isEnabled: true, description: 'Enable dark mode toggle' },
-    { key: 'overtime_calculator', isEnabled: true, description: 'Enable overtime calculation in salary calculator' },
-    { key: 'blog', isEnabled: true, description: 'Enable blog section' },
-    { key: 'admin_tests', isEnabled: false, description: 'Enable test runner in admin panel' },
+    { key: 'hijri_calendar', name: 'Hijri Calendar', isEnabled: true, description: 'Enable Hijri calendar support in calculators' },
+    { key: 'dark_mode', name: 'Dark Mode', isEnabled: true, description: 'Enable dark mode toggle' },
+    { key: 'overtime_calculator', name: 'Overtime Calculator', isEnabled: true, description: 'Enable overtime calculation in salary calculator' },
+    { key: 'blog', name: 'Blog', isEnabled: true, description: 'Enable blog section' },
+    { key: 'admin_tests', name: 'Admin Tests', isEnabled: false, description: 'Enable test runner in admin panel' },
   ];
 
   for (const feature of features) {
     await prisma.featureFlag.upsert({
       where: { key: feature.key },
       update: {},
-      create: feature,
+      create: {
+        key: feature.key,
+        name: feature.name,
+        description: feature.description,
+        enabledByDefault: feature.isEnabled
+      },
     });
   }
   console.log('✅ Feature flags created');
