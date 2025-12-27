@@ -1,30 +1,55 @@
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const readline = require('readline');
 const { prisma } = require('./_prisma.cjs');
 
 const file = path.join(__dirname, '..', 'server', 'admin-users.json');
 const username = process.argv[2];
-// Prioritize environment variable for security, fallback to argument
-const password = process.env.CALCU_ADMIN_PASSWORD || process.argv[3];
-// optional comma-separated roles as third arg or fourth
-const rolesArg = process.argv[4] || (process.env.CALCU_ADMIN_PASSWORD ? process.argv[3] : process.argv[4]);
-let roles = ['Admin'];
-if (rolesArg) {
-  roles = rolesArg.split(',').map(s => s.trim()).filter(Boolean);
-}
 
-if (!username || !password) {
-  console.error('Usage: CALCU_ADMIN_PASSWORD=... node scripts/create-admin.cjs <username> [password_if_no_env]');
-  process.exit(2);
+async function getPassword() {
+  if (process.env.CALCU_ADMIN_PASSWORD) return process.env.CALCU_ADMIN_PASSWORD;
+  if (process.argv[3]) return process.argv[3];
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true
+  });
+
+  return new Promise(resolve => {
+    rl.question(`Enter password for ${username}: `, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+    // Hide input if possible (simple version)
+    rl._writeToOutput = function _writeToOutput(stringToWrite) {
+      if (stringToWrite.includes(`Enter password for ${username}: `)) {
+        rl.output.write(stringToWrite);
+      } else {
+        rl.output.write("*");
+      }
+    };
+  });
 }
 
 async function run() {
+  if (!username) {
+    console.error('Usage: CALCU_ADMIN_PASSWORD=... node scripts/create-admin.cjs <username>');
+    process.exit(2);
+  }
+
+  const password = await getPassword();
+  if (!password) {
+    console.error('Error: Password is required');
+    process.exit(2);
+  }
+
   const hashedPassword = bcrypt.hashSync(password, 12);
   const now = new Date();
 
   try {
-    // 1. Update Database (Primary)
+    // 1. Update Database (Primary Source of Truth)
     await prisma.user.upsert({
       where: { email: username.toLowerCase() },
       update: { hashedPassword, role: 'SUPER_ADMIN', isActive: true },
@@ -36,19 +61,20 @@ async function run() {
         isActive: true
       }
     });
-    console.log('✅ Updated admin in database:', username);
+    console.log('\n✅ Updated admin in database:', username);
 
-    // 2. Update JSON (Legacy/Fallback)
+    // 2. Update JSON (Legacy/Dev Fallback - Ignored by Git)
     let users = {};
     if (fs.existsSync(file)) {
       try { users = JSON.parse(fs.readFileSync(file, 'utf8') || '{}'); } catch (e) { users = {}; }
     }
-    users[username] = { passwordHash: bcrypt.hashSync(password, 10), createdAt: Date.now(), roles };
+    // Use same cost factor (12) for consistency
+    users[username] = { passwordHash: hashedPassword, createdAt: Date.now(), roles: ['Admin'] };
     fs.writeFileSync(file, JSON.stringify(users, null, 2), 'utf8');
     console.log('✅ Updated admin in admin-users.json:', username);
 
   } catch (error) {
-    console.error('❌ Error updating admin:', error.message);
+    console.error('\n❌ Error updating admin:', error.message);
     process.exit(1);
   } finally {
     await prisma.$disconnect();
