@@ -38,8 +38,9 @@ if (-not $ready) {
 
 "Server is ready. Logging in..." | Out-Host
 
-# Use Invoke-WebRequest ONLY for cookie jar handling; no HTML parsing warnings needed
-$body = @{ email = "admin@calcuhub.com"; password = "ChangeThisPassword123!" } | ConvertTo-Json
+# Use environment variable for password if available, fallback to default for local dev
+$adminPassword = if ($env:CALCU_ADMIN_PASSWORD) { $env:CALCU_ADMIN_PASSWORD } else { "ChangeThisPassword123!" }
+$body = @{ email = "admin@calcuhub.com"; password = $adminPassword } | ConvertTo-Json
 $resp = Invoke-WebRequest -Uri "http://localhost:4000/api/auth/login" -Method Post -ContentType "application/json" -Body $body -SessionVariable s -UseBasicParsing
 
 $cookieHeader = ($s.Cookies.GetCookies("http://localhost:4000") | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join "; "

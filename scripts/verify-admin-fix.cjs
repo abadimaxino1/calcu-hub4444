@@ -8,8 +8,8 @@ const http = require('http');
 
 const BASE_URL = 'http://localhost:4000';
 const ADMIN_CREDENTIALS = {
-  email: process.env.ADMIN_EMAIL || 'admin@calcuhub.com',
-  password: process.env.ADMIN_PASSWORD || 'ChangeThisPassword123!'
+  email: process.env.ADMIN_EMAIL || process.env.CALCU_ADMIN_EMAIL || 'admin@calcuhub.com',
+  password: process.env.ADMIN_PASSWORD || process.env.CALCU_ADMIN_PASSWORD || 'ChangeThisPassword123!'
 };
 
 let failures = 0;
