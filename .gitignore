@@ -19,3 +19,6 @@ dev.db-journal
 /scripts/verify-output.txt
 /lighthouse-report.json
 /server/runtime/
+
+# Local admin accounts
+server/admin-users.json
