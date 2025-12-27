@@ -1,69 +1,89 @@
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const readline = require('readline');
 const { prisma } = require('./_prisma.cjs');
 
 const username = process.argv[2];
 
 async function getPassword() {
   if (process.env.CALCU_ADMIN_PASSWORD) return process.env.CALCU_ADMIN_PASSWORD;
-  if (process.argv[3]) return process.argv[3];
 
-  const isRaw = process.stdin.isTTY;
-  if (!isRaw) {
-    console.error('Error: Password must be provided via CALCU_ADMIN_PASSWORD env var in non-interactive environments.');
+  const isTTY =
+    !!process.stdin.isTTY &&
+    !!process.stdout.isTTY &&
+    typeof process.stdin.setRawMode === 'function';
+
+  if (!isTTY) {
+    console.error(
+      'Error: Non-interactive environment. Provide password via CALCU_ADMIN_PASSWORD.'
+    );
     process.exit(2);
   }
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: true
-  });
+  process.stdout.write(`Enter password for ${username}: `);
 
-  return new Promise(resolve => {
-    // Use a more robust way to hide password input
-    process.stdout.write(`Enter password for ${username}: `);
-    
-    // Set raw mode to capture characters without echoing
-    process.stdin.setRawMode(true);
-    
+  return await new Promise((resolve) => {
     let password = '';
-    const onData = (char) => {
-      char = char.toString();
-      switch (char) {
-        case '\n':
-        case '\r':
-        case '\u0004': // Ctrl-D
-          process.stdin.removeListener('data', onData);
-          if (isRaw) process.stdin.setRawMode(false);
-          process.stdout.write('\n');
-          rl.close();
-          resolve(password);
-          break;
-        case '\u0003': // Ctrl-C
-          process.stdin.removeListener('data', onData);
-          if (isRaw) process.stdin.setRawMode(false);
+    let rawEnabled = false;
+
+    const cleanup = () => {
+      try {
+        process.stdin.removeListener('data', onData);
+      } catch {}
+      try {
+        if (rawEnabled) process.stdin.setRawMode(false);
+      } catch {}
+      try {
+        process.stdin.pause();
+      } catch {}
+    };
+
+    const finish = (value) => {
+      cleanup();
+      process.stdout.write('\n');
+      resolve(value);
+    };
+
+    const onData = (buf) => {
+      const char = buf.toString('utf8');
+
+      // Handle paste: could be multiple chars at once
+      for (const c of char) {
+        if (c === '\r' || c === '\n') return finish(password);
+
+        if (c === '\u0003') { // Ctrl-C
+          cleanup();
           process.stdout.write('\n');
           process.exit(130);
-          break;
-        case '\u0008':
-        case '\x7f': // Backspace
-          if (password.length > 0) {
-            password = password.slice(0, -1);
-            // On some terminals we might want to echo a backspace/space/backspace to clear the asterisk
-            // but since we are silent, we do nothing.
-          }
-          break;
-        default:
-          password += char;
-          // Silent input - no echo
-          break;
+        }
+
+        if (c === '\u0004') { // Ctrl-D
+          // Treat as cancel (safer than accepting partial silently)
+          return finish('');
+        }
+
+        if (c === '\u0008' || c === '\x7f') { // backspace
+          if (password.length > 0) password = password.slice(0, -1);
+          continue;
+        }
+
+        // Ignore escape sequences (arrow keys, etc.)
+        if (c === '\u001b') continue;
+
+        password += c;
       }
     };
 
-    process.stdin.on('data', onData);
+    try {
+      process.stdin.setRawMode(true);
+      rawEnabled = true;
+      process.stdin.resume();
+      process.stdin.on('data', onData);
+    } catch (e) {
+      cleanup();
+      console.error('\nError: Failed to read password securely:', e?.message || e);
+      process.exit(2);
+    }
   });
 }
 
